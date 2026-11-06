@@ -1,8 +1,4 @@
-"""
-test_evensplit.py - Automated Unit & Integration Tests for EvenSplit
-====================================================================
-Capstone CP-007: Group Expense Settlement Optimizer
-"""
+"""test_evensplit.py - Automated unit tests for EvenSplit (CP-007)."""
 
 import os
 import unittest
@@ -191,3 +187,4 @@ class TestDataManager(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

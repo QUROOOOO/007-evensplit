@@ -2,27 +2,27 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Standard Library Only](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)]()
-[![Code Style](https://img.shields.io/badge/aesthetic-Claude%20Code-purple.svg)]()
+[![Navigation](https://img.shields.io/badge/navigation-arrow--keys-green.svg)]()
 
 ## About the Project
 When friends go on a trip or flatmates share expenses, different people pay for different bills—leading to a confusing chain of who owes whom. **EvenSplit** is a console-based expense manager and debt-simplification engine that tracks shared group expenses, calculates each member's real-time net balance, and resolves all debts using the **minimum possible number of payments**.
 
-Built strictly with Python's standard library (`sys`, `time`, `json`, `math`, `os`), EvenSplit combines simple, easy-to-understand arithmetic and algorithms with a developer-tool terminal interface inspired by Claude Code.
+Built strictly with Python's standard library (`sys`, `time`, `json`, `math`, `os`, `msvcrt`), EvenSplit features interactive arrow-key navigation (OpenCode node-line style) and a refined 4-color palette.
 
 ---
 
 ## Architecture & Code Structure
 
-The project is structured into 4 modular, readable files:
-
 ```
 007-evensplit/
 ├── engine.py          # Core mathematical logic & greedy cash-flow algorithm
 ├── data_manager.py    # Local JSON persistence (data.json)
-├── tui.py             # Claude Code developer-tool terminal UI (Unicode boxes, colors, spinner)
-├── main.py            # Menu-driven controller & input validation loops
+├── tui.py             # OpenCode-styled terminal UI (arrow-key navigation, tables, spinner)
+├── main.py            # Menu-driven controller with keyboard events
 ├── test_evensplit.py  # Automated unit test suite
-├── data.json          # Persistent JSON storage file
+├── evensplit.cmd      # Direct command wrapper for Windows CMD
+├── evensplit.ps1      # Direct PowerShell execution wrapper
+├── data.json          # Persistent JSON storage file (fresh empty state)
 └── README.md          # Project documentation
 ```
 
@@ -30,23 +30,23 @@ The project is structured into 4 modular, readable files:
 
 1. **`engine.py` (Core Calculations)**:
    - `add_member(members, name)`: Validates non-empty names and enforces case-insensitive uniqueness.
-   - `record_expense(expenses, members, desc, amount, payer, participants)`: Validates positive amounts, existing payers/participants, and computes per-person equal shares.
+   - `record_expense(expenses, members, desc, amount, payer, participants)`: Validates positive amounts and computes per-person equal shares.
    - `calculate_net_balances(members, expenses)`: Computes real-time `net = total_paid - total_consumed` for all members.
-   - `compute_min_settlements(net_balances)`: Greedy Cash-Flow Minimization algorithm that resolves debts in at most $N - 1$ peer-to-peer transfers.
+   - `compute_min_settlements(net_balances)`: Greedy Cash-Flow Minimization algorithm resolving debts in at most $N - 1$ transfers.
 
 2. **`data_manager.py` (Persistence)**:
    - Reads and writes group name, member list, and expense history to `data.json`.
-   - Handles corrupted or missing files without crashing.
+   - Returns safe defaults on missing or corrupted files.
 
 3. **`tui.py` (Terminal User Interface)**:
-   - Unicode box-drawing characters (`╭`, `─`, `╮`, `│`, `╰`, `╯`, `├`, `┤`, `┬`, `┴`, `┼`).
-   - Claude Code ANSI styling (cyan accents, purple badges, bold white headers, emerald green checks, crimson warnings).
-   - 0.8-second braille spinner animation (`⠋ ⠙ ⠹ ...`).
-   - Formatted tabular views with automatic padding and visible character alignment.
+   - Minimal header box and vertical connector node-line menu (`│`, `○`, `●`, `❯`).
+   - Arrow-key navigation via `msvcrt`: `[↑/↓]` to navigate, `[Enter]` to select, `[Esc/q]` to cancel.
+   - Multi-select participant toggles using `[Spacebar]` (`[✔]` / `[ ]`).
+   - 4-Color Palette: Crisp White text, Bright Green accents, Dim Grey lines/borders, Black background.
+   - 0.8-second braille dot spinner (`⠋ ⠙ ⠹ ...`).
 
 4. **`main.py` (Interactive Controller)**:
-   - Robust input validation loops (never crashes on letters, blank inputs, or out-of-range choices).
-   - Coordinates all 6 core menu features.
+   - Manages state, graceful empty-group hints, and keyboard-driven sub-menus.
 
 ---
 
@@ -55,68 +55,41 @@ The project is structured into 4 modular, readable files:
 Instead of settling every bill individually:
 1. Each member's **Net Balance** is calculated:
    $$\text{Net Balance} = \text{Total Amount Paid} - \text{Total Share Consumed}$$
-   - Positive ($+$): The member paid more than their share; they are **owed** money.
-   - Negative ($-$) The member consumed more than they paid; they **owe** money.
+   - Positive ($+$): The member is **owed** money.
+   - Negative ($-$) The member **owes** money.
    - Zero ($0$): The member is settled.
 
 2. The **Greedy Cash-Flow Minimization Algorithm**:
-   - **Step 1:** Identify the largest debtor (minimum negative balance $< -0.01$).
-   - **Step 2:** Identify the largest creditor (maximum positive balance $> 0.01$).
-   - **Step 3:** Settle an amount equal to $\min(|\text{debtor}|, \text{creditor})$.
-   - **Step 4:** Update both balances and repeat until all debts are eliminated.
-   - **Outcome:** Guarantees that at least one person's debt is cleared to zero at every step, minimizing the total number of peer-to-peer transactions.
-
----
-
-## Core Features (Bizotic CP-007)
-
-1. **[1] Create Group & Add Members:**
-   - Register group names (e.g. "Trip to Goa 2026").
-   - Add single members or comma-separated lists (`Alice, Bob, Charlie`).
-   - Automatic case-insensitive duplicate rejection.
-
-2. **[2] Add Shared Expense:**
-   - Select payer by number or name.
-   - Choose split participants (`all` or comma-separated indices `1, 3`).
-   - Computes per-person share and displays confirmation summary.
-
-3. **[3] View Member Net Balances:**
-   - Visual ledger displaying Total Paid, Total Consumed, Net Balance, and status pills:
-     - `▲ IS OWED (Gets Back)` (Green)
-     - `▼ OWES (Must Pay)` (Red)
-     - `✔ SETTLED` (Dim)
-
-4. **[4] Generate Minimum Settlement Plan:**
-   - Visual cash-flow transfer routes:
-     `[#1]  Diana  ────────[ ₹ 3,500.00 ]────────❯  Alice`
-   - Optimization metrics displaying total transactions saved.
-
-5. **[5] Full Expense History:**
-   - Chronological audit log of all recorded bills with participant counts and individual shares.
-
-6. **[6] Save / Reload Data (JSON):**
-   - Save session state to `data.json` or reload from disk anytime.
-   - Automatic prompt to save unsaved changes upon exit.
+   - Match the largest debtor ($\text{balance} < -0.01$) with the largest creditor ($\text{balance} > 0.01$).
+   - Transfer $\min(|\text{debtor}|, \text{creditor})$ from debtor to creditor.
+   - Update both balances and repeat until all debts are cleared.
 
 ---
 
 ## How to Run
 
-### 1. Prerequisites
-- Python 3.8 or higher.
-- No external libraries required (pure Python standard library).
-
-### 2. Clone and Start
-```bash
-git clone https://github.com/QUROOOOO/007-evensplit.git
-cd 007-evensplit
-python main.py
+### Option 1: Direct Execution Wrapper (Recommended on Windows)
+```cmd
+evensplit
 ```
-*(On systems where Python 3 is aliased, run `python3 main.py` or `python3.11 main.py`)*
+or in PowerShell:
+```powershell
+.\evensplit
+```
 
-### 3. Run Automated Tests
+### Option 2: Python Command
 ```bash
-python -m unittest test_evensplit.py
+python3.11 main.py
+```
+
+### Visual Demo Showcase
+```bash
+python3.11 main.py --demo
+```
+
+### Run Automated Tests
+```bash
+python3.11 test_evensplit.py
 ```
 
 ---
