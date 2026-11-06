@@ -82,7 +82,7 @@ def show_cursor():
 # Keyboard Input (msvcrt on Windows)
 # ---------------------------------------------------------------------------
 def read_key() -> str:
-    """Read a single interactive keypress."""
+    """Read a single interactive keypress with signal protection."""
     if os.name == "nt":
         import msvcrt
         ch = msvcrt.getwch()
@@ -94,18 +94,14 @@ def read_key() -> str:
             return "ENTER"
         if ch == " ":
             return "SPACE"
-        if ch == "\x1b":
+        if ch in ("\x1b", "q", "Q", "\x03", "\x1a"):
             return "ESC"
-        if ch in ("q", "Q"):
-            return "q"
-        if ch == "\x03":
-            raise KeyboardInterrupt
         return ch
     else:
         import tty
         import termios
         fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
+        old_settings = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
             ch = sys.stdin.read(1)
@@ -119,23 +115,26 @@ def read_key() -> str:
                 return "ENTER"
             if ch == " ":
                 return "SPACE"
-            if ch in ("q", "Q"):
-                return "q"
+            if ch in ("q", "Q", "\x03", "\x1a"):
+                return "ESC"
             return ch
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 # ---------------------------------------------------------------------------
 # Visual Elements & Headers
 # ---------------------------------------------------------------------------
 def get_header_lines() -> list[str]:
-    """Return lines for the clean EvenSplit header box."""
+    """Return lines for the bold ASCII art EvenSplit header."""
     return [
-        f"{GREY}╭────────────────────────────────────────╮{RESET}",
-        f"{GREY}│{RESET}  {BOLD_AMBER}EVENSPLIT{RESET}                             {GREY}│{RESET}",
-        f"{GREY}│{RESET}  {WHITE}Group Expense Settlement Optimizer{RESET}    {GREY}│{RESET}",
-        f"{GREY}╰────────────────────────────────────────╯{RESET}",
+        f"{BOLD_AMBER}  ███████╗██╗   ██╗███████╗███╗   ██╗███████╗██████╗ ██╗     ██╗████████╗{RESET}",
+        f"{BOLD_AMBER}  ██╔════╝██║   ██║██╔════╝████╗  ██║██╔════╝██╔══██╗██║     ██║╚══██╔══╝{RESET}",
+        f"{BOLD_AMBER}  █████╗  ██║   ██║█████╗  ██╔██╗ ██║███████╗██████╔╝██║     ██║   ██║   {RESET}",
+        f"{BOLD_AMBER}  ██╔══╝  ╚██╗ ██╔╝██╔══╝  ██║╚██╗██║╚════██║██╔═══╝ ██║     ██║   ██║   {RESET}",
+        f"{BOLD_AMBER}  ███████╗ ╚████╔╝ ███████╗██║ ╚████║███████║██║     ███████╗██║   ██║   {RESET}",
+        f"{BOLD_AMBER}  ╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═══╝╚══════╝╚═╝     ╚══════╝╚═╝   ╚═╝   {RESET}",
+        f"  {WHITE}Group Expense Settlement Optimizer{RESET}",
         ""
     ]
 
@@ -205,10 +204,11 @@ def spinner(message: str = "Processing...", duration: float = 0.8):
 # ---------------------------------------------------------------------------
 # Zero-Flicker Interactive Arrow Selection (Buffer-based)
 # ---------------------------------------------------------------------------
-def select_menu(items: list, selected: int = 0, header_fn=None) -> int:
+def select_menu(items: list, selected: int = 0, header_fn=None, nav_help: str = None) -> int:
     """Zero-flicker OpenCode vertical connector node menu."""
     n = len(items)
     clear_screen()
+    help_text = nav_help or "[↑/↓] Navigate   [Enter] Select   [Esc] Back"
 
     while True:
         buf = ["\033[?25l\033[H"]
@@ -230,7 +230,7 @@ def select_menu(items: list, selected: int = 0, header_fn=None) -> int:
             buf.append(f"{cursor}  {title_fmt}  {desc_fmt}\033[K\n")
             buf.append(f"  {GREEN}│{RESET}\033[K\n")
 
-        buf.append(f"\n  {GREY}[↑/↓] Navigate   [Enter] Select   [Esc/q] Exit{RESET}\033[K\n")
+        buf.append(f"\n  {GREY}{help_text}{RESET}\033[K\n")
         buf.append("\033[J")
 
         sys.stdout.write("".join(buf))
@@ -249,12 +249,13 @@ def select_menu(items: list, selected: int = 0, header_fn=None) -> int:
             return -1
 
 
-def select_one(items: list, selected: int = 0, prompt: str = "Select an option:", header_fn=None) -> int:
+def select_one(items: list, selected: int = 0, prompt: str = "Select an option:", header_fn=None, nav_help: str = None) -> int:
     """Zero-flicker single selection list with node lines."""
     n = len(items)
     if n == 0:
         return -1
     clear_screen()
+    help_text = nav_help or "[↑/↓] Navigate   [Enter] Select   [Esc] Back"
 
     while True:
         buf = ["\033[?25l\033[H"]
@@ -275,7 +276,7 @@ def select_one(items: list, selected: int = 0, prompt: str = "Select an option:"
             buf.append(f"{cursor}  {item_fmt}\033[K\n")
             buf.append(f"  {GREEN}│{RESET}\033[K\n")
 
-        buf.append(f"\n  {GREY}[↑/↓] Navigate   [Enter] Select   [Esc/q] Back{RESET}\033[K\n")
+        buf.append(f"\n  {GREY}{help_text}{RESET}\033[K\n")
         buf.append("\033[J")
 
         sys.stdout.write("".join(buf))
@@ -294,7 +295,7 @@ def select_one(items: list, selected: int = 0, prompt: str = "Select an option:"
             return -1
 
 
-def select_multi(items: list, checked: list = None, prompt: str = "Select participants:", header_fn=None) -> list:
+def select_multi(items: list, checked: list = None, prompt: str = "Select participants:", header_fn=None, nav_help: str = None) -> list:
     """Zero-flicker multi-select list with [✔] / [ ] toggled via Spacebar."""
     n = len(items)
     if n == 0:
@@ -303,6 +304,7 @@ def select_multi(items: list, checked: list = None, prompt: str = "Select partic
     checked = [True] * n if checked is None else list(checked)
     selected = 0
     clear_screen()
+    help_text = nav_help or "[↑/↓] Navigate   [Space] Toggle   [Enter] Confirm   [a] All/None   [Esc] Back"
 
     while True:
         buf = ["\033[?25l\033[H"]
@@ -324,7 +326,7 @@ def select_multi(items: list, checked: list = None, prompt: str = "Select partic
             buf.append(f"{cursor}  {box} {item_fmt}\033[K\n")
             buf.append(f"  {GREEN}│{RESET}\033[K\n")
 
-        buf.append(f"\n  {GREY}[↑/↓] Navigate   [Space] Toggle   [Enter] Confirm   [a] All/None   [Esc/q] Cancel{RESET}\033[K\n")
+        buf.append(f"\n  {GREY}{help_text}{RESET}\033[K\n")
         buf.append("\033[J")
 
         sys.stdout.write("".join(buf))

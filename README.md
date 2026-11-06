@@ -7,7 +7,7 @@
 ## About the Project
 When friends go on a trip or flatmates share expenses, different people pay for different bills—leading to a confusing chain of who owes whom. **EvenSplit** is a console-based expense manager and debt-simplification engine that tracks shared group expenses, calculates each member's real-time net balance, and resolves all debts using the **minimum possible number of payments**.
 
-Built strictly with Python's standard library (`sys`, `time`, `json`, `math`, `os`, `msvcrt`), EvenSplit features zero-flicker interactive arrow-key navigation (OpenCode node-line style), live member appending, an edit engine, multi-file bill storage, and visual confirmation cards.
+Built strictly with Python's standard library (`sys`, `time`, `json`, `math`, `os`, `msvcrt`), EvenSplit features a bold amber ASCII header, zero-flicker interactive arrow-key navigation (OpenCode node-line style), a dedicated Saved Bill Hub, universal `Esc` back-navigation, live member appending, an edit engine, and visual confirmation cards.
 
 ---
 
@@ -17,8 +17,8 @@ Built strictly with Python's standard library (`sys`, `time`, `json`, `math`, `o
 007-evensplit/
 ├── engine.py          # Core mathematical logic, debt minimization & edit engine
 ├── data_manager.py    # Multi-file bill persistence (saved_bills/ & data.json)
-├── tui.py             # Zero-flicker buffer UI (arrow navigation, tables, card, spinner)
-├── main.py            # Menu controller with keyboard events & header sync
+├── tui.py             # Zero-flicker buffer UI (ASCII header, arrow navigation, tables, card)
+├── main.py            # Menu controller with keyboard events, Bill Hub & header sync
 ├── test_evensplit.py  # Automated unit test suite (17 tests)
 ├── evensplit.cmd      # Direct command wrapper for Windows CMD
 ├── evensplit.ps1      # Direct PowerShell execution wrapper
@@ -44,23 +44,20 @@ Built strictly with Python's standard library (`sys`, `time`, `json`, `math`, `o
    - `list_saved_bills()`: Scans and presents all saved bills with group name, member counts, and total spends.
 
 3. **`tui.py` (Zero-Flicker Terminal UI)**:
+   - Bold ASCII block header for **EVENSPLIT** in bright amber (`\033[38;5;220m`).
    - Zero-flicker rendering via ANSI escape buffers (`\033[?25l`, `\033[H`, `\033[K`) with no screen blink during arrow navigation.
-   - Minimal header box and vertical connector node-line menu (`│`, `○`, `●`, `❯`).
-   - Arrow-key navigation via `msvcrt`: `[↑/↓]` to navigate, `[Enter]` to select, `[Esc/q]` to cancel.
+   - OpenCode vertical connector node-line menu (`│`, `○`, `●`, `❯`).
+   - Arrow-key navigation via `msvcrt`: `[↑/↓]` to navigate, `[Enter]` to select, `[Esc]` to go back.
    - Multi-select participant toggles using `[Spacebar]` (`[✔]` / `[ ]`).
    - Visual Expense Confirmation Card with dynamic character padding.
    - Table alignment with wide characters/emojis and description truncation.
-   - Color Hierarchy:
-     - **Punchy Bright Green (`\033[92m`)**: Rails `│`, active node `●`, cursor `❯`, checked boxes `[✔]`, positive balance.
-     - **Punchy Amber (`\033[38;5;220m`)**: EVENSPLIT title, active group banner, total spends.
-     - **White (`\033[97m`)**: Reading text, member names, table headers.
-     - **Dim Grey (`\033[90m`)**: Inactive nodes `○`, borders, descriptions.
+   - Keystroke & signal protection (`Ctrl+C` / `Ctrl+Z` safely intercepted).
 
 4. **`main.py` (Interactive Controller)**:
-   - Prominent group header sync showing group name, member count, and total spend in amber.
-   - Live-appending member registration loop.
-   - Universal Edit Engine (`Edit Recorded Data`).
-   - Multi-file bill selection (`Open Saved Bill`).
+   - Fresh startup state: boots into clean session memory without auto-loading previous sessions.
+   - Streamlined first-time group creation: prompts directly for group name, followed immediately by live member entry.
+   - Dedicated **Saved Bill Hub**: opens any bill from `saved_bills/` into an isolated exploration sub-console.
+   - Universal `Esc` back-navigation across all views and sub-menus.
 
 ---
 
