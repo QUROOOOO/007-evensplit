@@ -1,13 +1,14 @@
 """test_evensplit.py - Automated unit tests for EvenSplit (CP-007)."""
 
 import os
+import shutil
 import unittest
 import engine
 import data_manager
 
 
 class TestEngine(unittest.TestCase):
-    """Unit tests for engine.py core calculations and validation."""
+    """Unit tests for engine.py core calculations, validation, and editing."""
 
     def setUp(self):
         self.members = []
@@ -60,26 +61,18 @@ class TestEngine(unittest.TestCase):
         engine.add_member(self.members, "Alice")
         engine.add_member(self.members, "Bob")
 
-        # Zero or negative amount
         with self.assertRaises(ValueError):
             engine.record_expense(self.expenses, self.members, "Test", 0, "Alice", ["Alice", "Bob"])
         with self.assertRaises(ValueError):
             engine.record_expense(self.expenses, self.members, "Test", -50, "Alice", ["Alice", "Bob"])
-
-        # Non-existent payer
         with self.assertRaises(ValueError):
             engine.record_expense(self.expenses, self.members, "Test", 100, "Unknown", ["Alice", "Bob"])
-
-        # Empty participants
         with self.assertRaises(ValueError):
             engine.record_expense(self.expenses, self.members, "Test", 100, "Alice", [])
-
-        # Non-existent participant
         with self.assertRaises(ValueError):
             engine.record_expense(self.expenses, self.members, "Test", 100, "Alice", ["Alice", "Unknown"])
 
     def test_calculate_net_balances_simple(self):
-        # Alice pays 100 for Alice and Bob
         members = ["Alice", "Bob"]
         expenses = [{
             "id": 1,
@@ -96,8 +89,6 @@ class TestEngine(unittest.TestCase):
 
     def test_calculate_net_balances_multi(self):
         members = ["Alice", "Bob", "Charlie"]
-        # Alice pays 90 for all 3 (share = 30 each)
-        # Bob pays 60 for Bob and Charlie (share = 30 each)
         expenses = [
             {
                 "id": 1, "description": "Dinner", "amount": 90.0,
@@ -108,9 +99,6 @@ class TestEngine(unittest.TestCase):
                 "payer": "Bob", "participants": ["Bob", "Charlie"], "split_amount": 30.0
             }
         ]
-        # Alice: paid 90, consumed 30 -> Net = +60
-        # Bob: paid 60, consumed 30 + 30 = 60 -> Net = 0
-        # Charlie: paid 0, consumed 30 + 30 = 60 -> Net = -60
         balances = engine.calculate_net_balances(members, expenses)
         self.assertEqual(balances["Alice"], 60.0)
         self.assertEqual(balances["Bob"], 0.0)
@@ -118,26 +106,20 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(round(sum(balances.values()), 2), 0.0)
 
     def test_compute_min_settlements_greedy(self):
-        # Alice: +60, Bob: 0, Charlie: -60
         net_balances = {"Alice": 60.0, "Bob": 0.0, "Charlie": -60.0}
         transfers = engine.compute_min_settlements(net_balances)
-
         self.assertEqual(len(transfers), 1)
         self.assertEqual(transfers[0]["from"], "Charlie")
         self.assertEqual(transfers[0]["to"], "Alice")
         self.assertEqual(transfers[0]["amount"], 60.0)
 
     def test_compute_min_settlements_complex(self):
-        # 4 members complex debts:
-        # A: +100, B: +50, C: -80, D: -70
         net_balances = {"A": 100.0, "B": 50.0, "C": -80.0, "D": -70.0}
         transfers = engine.compute_min_settlements(net_balances)
 
-        # Total settled must equal total positive balance (150.0)
         total_settled = sum(t["amount"] for t in transfers)
         self.assertAlmostEqual(total_settled, 150.0, places=2)
 
-        # Verify that applying transfers zeroes out everyone's balance
         working = dict(net_balances)
         for t in transfers:
             working[t["from"]] += t["amount"]
@@ -151,16 +133,64 @@ class TestEngine(unittest.TestCase):
         transfers = engine.compute_min_settlements(net_balances)
         self.assertEqual(len(transfers), 0)
 
+    def test_edit_engine_rename_member(self):
+        members = ["Alice", "Bob"]
+        expenses = [
+            {"id": 1, "description": "Taxi", "amount": 40.0, "payer": "Alice", "participants": ["Alice", "Bob"], "split_amount": 20.0}
+        ]
+        engine.rename_member(members, expenses, "Alice", "Alicia")
+        self.assertIn("Alicia", members)
+        self.assertNotIn("Alice", members)
+        self.assertEqual(expenses[0]["payer"], "Alicia")
+        self.assertIn("Alicia", expenses[0]["participants"])
+
+    def test_edit_engine_delete_member_prevent_payer(self):
+        members = ["Alice", "Bob"]
+        expenses = [
+            {"id": 1, "description": "Taxi", "amount": 40.0, "payer": "Alice", "participants": ["Alice", "Bob"], "split_amount": 20.0}
+        ]
+        with self.assertRaises(ValueError):
+            engine.delete_member(members, expenses, "Alice")
+
+    def test_edit_engine_delete_member_participant(self):
+        members = ["Alice", "Bob", "Charlie"]
+        expenses = [
+            {"id": 1, "description": "Pizza", "amount": 60.0, "payer": "Alice", "participants": ["Alice", "Bob", "Charlie"], "split_amount": 20.0}
+        ]
+        engine.delete_member(members, expenses, "Charlie")
+        self.assertNotIn("Charlie", members)
+        self.assertEqual(expenses[0]["participants"], ["Alice", "Bob"])
+        self.assertEqual(expenses[0]["split_amount"], 30.0)
+
+    def test_edit_engine_update_and_delete_expense(self):
+        members = ["Alice", "Bob"]
+        expenses = [
+            {"id": 1, "description": "Coffee", "amount": 10.0, "payer": "Alice", "participants": ["Alice", "Bob"], "split_amount": 5.0}
+        ]
+        engine.update_expense(expenses, members, 1, desc="Specialty Coffee", amount=20.0)
+        self.assertEqual(expenses[0]["description"], "Specialty Coffee")
+        self.assertEqual(expenses[0]["amount"], 20.0)
+        self.assertEqual(expenses[0]["split_amount"], 10.0)
+
+        deleted = engine.delete_expense(expenses, 1)
+        self.assertTrue(deleted)
+        self.assertEqual(len(expenses), 0)
+
 
 class TestDataManager(unittest.TestCase):
-    """Unit tests for data_manager.py JSON persistence."""
+    """Unit tests for data_manager.py JSON persistence and multi-file storage."""
 
     def setUp(self):
         self.test_file = "test_data_temp.json"
+        self.test_dir = "test_saved_bills"
+        data_manager.SAVED_BILLS_DIR = self.test_dir
 
     def tearDown(self):
         if os.path.exists(self.test_file):
             os.remove(self.test_file)
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
+        data_manager.SAVED_BILLS_DIR = "saved_bills"
 
     def test_save_and_load_roundtrip(self):
         group_name = "Hackathon Squad"
@@ -169,15 +199,26 @@ class TestDataManager(unittest.TestCase):
             {"id": 1, "description": "Pizza", "amount": 50.0, "payer": "Dev1", "participants": ["Dev1", "Dev2"], "split_amount": 25.0}
         ]
 
-        save_res = data_manager.save_data(group_name, members, expenses, filepath=self.test_file)
-        self.assertTrue(save_res)
+        ok, path = data_manager.save_data(group_name, members, expenses, filepath=self.test_file)
+        self.assertTrue(ok)
         self.assertTrue(data_manager.data_file_exists(filepath=self.test_file))
 
         loaded_name, loaded_members, loaded_expenses = data_manager.load_data(filepath=self.test_file)
         self.assertEqual(loaded_name, group_name)
         self.assertEqual(loaded_members, members)
         self.assertEqual(len(loaded_expenses), 1)
-        self.assertEqual(loaded_expenses[0]["description"], "Pizza")
+
+    def test_multi_file_saved_bills(self):
+        group_name = "Kanak Bday"
+        members = ["Kanak", "Archak"]
+        expenses = [{"id": 1, "description": "Cake", "amount": 500.0, "payer": "Archak", "participants": members, "split_amount": 250.0}]
+
+        data_manager.save_data(group_name, members, expenses, filepath=self.test_file)
+        bills = data_manager.list_saved_bills()
+        self.assertEqual(len(bills), 1)
+        self.assertEqual(bills[0]["group_name"], "Kanak Bday")
+        self.assertEqual(bills[0]["members_count"], 2)
+        self.assertEqual(bills[0]["total_spend"], 500.0)
 
     def test_load_non_existent(self):
         loaded_name, loaded_members, loaded_expenses = data_manager.load_data("non_existent_file_xyz.json")
@@ -187,4 +228,3 @@ class TestDataManager(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

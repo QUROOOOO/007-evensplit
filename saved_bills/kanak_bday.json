@@ -1,0 +1,100 @@
+{
+    "group_name": "Kanak bday",
+    "members": [
+        "Kanak",
+        "Kowsalya",
+        "Anjlee",
+        "Fatima",
+        "Archak",
+        "Hashim",
+        "Arsh",
+        "Debashish"
+    ],
+    "expenses": [
+        {
+            "id": 1,
+            "description": "tea",
+            "amount": 80.0,
+            "payer": "Debashish",
+            "participants": [
+                "Kanak",
+                "Kowsalya",
+                "Anjlee",
+                "Fatima"
+            ],
+            "split_amount": 20.0
+        },
+        {
+            "id": 2,
+            "description": "coffee",
+            "amount": 45.0,
+            "payer": "Archak",
+            "participants": [
+                "Archak",
+                "Hashim",
+                "Arsh"
+            ],
+            "split_amount": 15.0
+        },
+        {
+            "id": 3,
+            "description": "starters",
+            "amount": 320.0,
+            "payer": "Anjlee",
+            "participants": [
+                "Kanak",
+                "Kowsalya",
+                "Anjlee",
+                "Fatima",
+                "Archak",
+                "Hashim",
+                "Arsh",
+                "Debashish"
+            ],
+            "split_amount": 40.0
+        },
+        {
+            "id": 4,
+            "description": "Main Courseee 🤤",
+            "amount": 800.0,
+            "payer": "Kanak",
+            "participants": [
+                "Kanak",
+                "Kowsalya",
+                "Anjlee",
+                "Fatima",
+                "Archak",
+                "Hashim",
+                "Arsh",
+                "Debashish"
+            ],
+            "split_amount": 100.0
+        },
+        {
+            "id": 5,
+            "description": "soda",
+            "amount": 360.0,
+            "payer": "Arsh",
+            "participants": [
+                "Kanak",
+                "Kowsalya",
+                "Anjlee",
+                "Archak",
+                "Hashim",
+                "Arsh"
+            ],
+            "split_amount": 60.0
+        },
+        {
+            "id": 6,
+            "description": "ice-cream",
+            "amount": 100.0,
+            "payer": "Fatima",
+            "participants": [
+                "Fatima",
+                "Debashish"
+            ],
+            "split_amount": 50.0
+        }
+    ]
+}

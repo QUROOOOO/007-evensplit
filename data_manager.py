@@ -2,23 +2,44 @@
 
 import json
 import os
+import re
 
 DEFAULT_FILEPATH = "data.json"
+SAVED_BILLS_DIR = "saved_bills"
 
 
-def save_data(group_name: str, members: list, expenses: list, filepath: str = DEFAULT_FILEPATH) -> bool:
-    """Save group state to a JSON file."""
+def slugify(text: str) -> str:
+    """Generate a clean filesystem slug from a string."""
+    clean = re.sub(r"[^\w\s-]", "", text.strip().lower())
+    slug = re.sub(r"[-\s]+", "_", clean)
+    return slug or "untitled_group"
+
+
+def save_data(group_name: str, members: list, expenses: list, filepath: str = DEFAULT_FILEPATH) -> tuple[bool, str]:
+    """Save group state to JSON files (saved_bills/ and primary data.json)."""
     payload = {
         "group_name": group_name,
         "members": members,
         "expenses": expenses
     }
+    saved_path = filepath
     try:
+        # Save to primary filepath
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=4, ensure_ascii=False)
-        return True
+
+        # Also save to saved_bills/ directory if group_name exists
+        if group_name and group_name.strip():
+            os.makedirs(SAVED_BILLS_DIR, exist_ok=True)
+            slug = slugify(group_name)
+            named_path = os.path.join(SAVED_BILLS_DIR, f"{slug}.json")
+            with open(named_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=4, ensure_ascii=False)
+            saved_path = named_path
+
+        return True, saved_path
     except (OSError, IOError):
-        return False
+        return False, ""
 
 
 def load_data(filepath: str = DEFAULT_FILEPATH) -> tuple:
@@ -46,6 +67,27 @@ def load_data(filepath: str = DEFAULT_FILEPATH) -> tuple:
         return ("", [], [])
 
 
+def list_saved_bills() -> list[dict]:
+    """Return summary list of all JSON bills stored in saved_bills/."""
+    if not os.path.exists(SAVED_BILLS_DIR):
+        return []
+
+    bills = []
+    for fname in sorted(os.listdir(SAVED_BILLS_DIR)):
+        if fname.endswith(".json"):
+            path = os.path.join(SAVED_BILLS_DIR, fname)
+            name, members, expenses = load_data(path)
+            total = sum(e.get("amount", 0.0) for e in expenses)
+            bills.append({
+                "filename": fname,
+                "filepath": path,
+                "group_name": name or fname[:-5],
+                "members_count": len(members),
+                "total_spend": total
+            })
+    return bills
+
+
 def data_file_exists(filepath: str = DEFAULT_FILEPATH) -> bool:
-    """Check if the storage file exists on disk."""
+    """Check if storage file exists on disk."""
     return os.path.isfile(filepath)

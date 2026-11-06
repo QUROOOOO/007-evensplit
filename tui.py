@@ -1,12 +1,13 @@
-"""tui.py - OpenCode-styled terminal UI with arrow-key navigation for EvenSplit."""
+"""tui.py - Zero-flicker terminal UI with arrow navigation and refined palette."""
 
 import os
 import re
 import sys
 import time
+import unicodedata
 
 # ---------------------------------------------------------------------------
-# Terminal Setup & 4-Color ANSI Palette
+# Terminal Setup & Refined 4-Color ANSI Palette
 # ---------------------------------------------------------------------------
 if os.name == "nt":
     os.system("")
@@ -19,30 +20,69 @@ if os.name == "nt":
 RESET = "\033[0m"
 WHITE = "\033[97m"
 BOLD_WHITE = "\033[1;97m"
-GREEN = "\033[92m"           # Bright punchy green
+GREEN = "\033[92m"           # Point-line rails, cursor ❯, checked [✔]
 BOLD_GREEN = "\033[1;92m"
-GREY = "\033[90m"            # Dim grey
+AMBER = "\033[38;5;220m"     # EVENSPLIT title, group name, total bill sums
+BOLD_AMBER = "\033[1;38;5;220m"
+GREY = "\033[90m"            # Unselected nodes ○, descriptions, borders
 CURRENCY = "₹"
 
 
+# ---------------------------------------------------------------------------
+# Visual Width & Emoji Handling
+# ---------------------------------------------------------------------------
+def visible_char_width(ch: str) -> int:
+    """Calculate terminal column display width of a single character."""
+    if ch in ("\ufe0e", "\ufe0f") or unicodedata.combining(ch):
+        return 0
+    w = unicodedata.east_asian_width(ch)
+    if w in ("W", "F"):
+        return 2
+    cp = ord(ch)
+    if (0x1F300 <= cp <= 0x1FAFF) or (0x2600 <= cp <= 0x27BF):
+        return 2
+    return 1
+
+
 def visible_len(text: str) -> int:
-    """Return visible character count excluding ANSI escape sequences."""
-    return len(re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text))
+    """Return visible terminal column width, ignoring ANSI escapes and counting emojis as 2."""
+    clean = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+    return sum(visible_char_width(ch) for ch in clean)
+
+
+def truncate_visible(text: str, max_w: int = 15) -> str:
+    """Truncate text to max visible columns, appending '...' if truncated."""
+    clean = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+    if visible_len(clean) <= max_w:
+        return clean
+    cur_w = 0
+    res = []
+    for ch in clean:
+        cw = visible_char_width(ch)
+        if cur_w + cw > max_w - 3:
+            break
+        res.append(ch)
+        cur_w += cw
+    return "".join(res) + "..."
 
 
 def clear_screen():
-    """Clear terminal screen."""
-    os.system("cls" if os.name == "nt" else "clear")
+    """Clear screen completely and move cursor to home (used on screen transitions)."""
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
+
+
+def show_cursor():
+    """Ensure cursor is visible."""
+    sys.stdout.write("\033[?25h")
+    sys.stdout.flush()
 
 
 # ---------------------------------------------------------------------------
 # Keyboard Input (msvcrt on Windows)
 # ---------------------------------------------------------------------------
 def read_key() -> str:
-    """
-    Read a single interactive keypress.
-    Returns: 'UP', 'DOWN', 'ENTER', 'SPACE', 'ESC', 'q', or raw char.
-    """
+    """Read a single interactive keypress."""
     if os.name == "nt":
         import msvcrt
         ch = msvcrt.getwch()
@@ -65,7 +105,7 @@ def read_key() -> str:
         import tty
         import termios
         fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
+        old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
             ch = sys.stdin.read(1)
@@ -83,43 +123,27 @@ def read_key() -> str:
                 return "q"
             return ch
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 # ---------------------------------------------------------------------------
-# Spinner Animation
+# Visual Elements & Headers
 # ---------------------------------------------------------------------------
-def spinner(message: str = "Processing...", duration: float = 0.8):
-    """Display a lightweight braille dot spinner for the given duration."""
-    frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-    start = time.time()
-    i = 0
-
-    sys.stdout.write("\033[?25l")
-    sys.stdout.flush()
-    try:
-        while time.time() - start < duration:
-            frame = frames[i % len(frames)]
-            sys.stdout.write(f"\r  {GREEN}{frame}{RESET}  {GREY}{message}{RESET}")
-            sys.stdout.flush()
-            time.sleep(0.08)
-            i += 1
-    finally:
-        sys.stdout.write("\r\033[K")
-        sys.stdout.write("\033[?25h")
-        sys.stdout.flush()
+def get_header_lines() -> list[str]:
+    """Return lines for the clean EvenSplit header box."""
+    return [
+        f"{GREY}╭────────────────────────────────────────╮{RESET}",
+        f"{GREY}│{RESET}  {BOLD_AMBER}EVENSPLIT{RESET}                             {GREY}│{RESET}",
+        f"{GREY}│{RESET}  {WHITE}Group Expense Settlement Optimizer{RESET}    {GREY}│{RESET}",
+        f"{GREY}╰────────────────────────────────────────╯{RESET}",
+        ""
+    ]
 
 
-# ---------------------------------------------------------------------------
-# Header & Visual Elements
-# ---------------------------------------------------------------------------
 def render_header():
-    """Render minimal, clean EvenSplit header box."""
-    print(f"{GREY}╭────────────────────────────────────────╮{RESET}")
-    print(f"{GREY}│{RESET}  {BOLD_WHITE}EVENSPLIT{RESET}                             {GREY}│{RESET}")
-    print(f"{GREY}│{RESET}  {WHITE}Group Expense Settlement Optimizer{RESET}    {GREY}│{RESET}")
-    print(f"{GREY}╰────────────────────────────────────────╯{RESET}")
-    print()
+    """Print the clean header box directly."""
+    for line in get_header_lines():
+        print(line)
 
 
 def hint(message: str):
@@ -148,7 +172,8 @@ def pause():
 
 
 def prompt_input(label: str, default: str = None) -> str:
-    """Prompt user for standard text input."""
+    """Prompt user for standard text input with visible cursor."""
+    show_cursor()
     def_str = f" {GREY}(default: {default}){RESET}" if default else ""
     try:
         val = input(f"  {GREEN}❯{RESET} {WHITE}{label}{RESET}{def_str}: ").strip()
@@ -158,22 +183,40 @@ def prompt_input(label: str, default: str = None) -> str:
         return ""
 
 
+def spinner(message: str = "Processing...", duration: float = 0.8):
+    """Display a lightweight braille dot spinner for the given duration."""
+    frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    start = time.time()
+    i = 0
+    sys.stdout.write("\033[?25l")
+    sys.stdout.flush()
+    try:
+        while time.time() - start < duration:
+            frame = frames[i % len(frames)]
+            sys.stdout.write(f"\r  {GREEN}{frame}{RESET}  {GREY}{message}{RESET}")
+            sys.stdout.flush()
+            time.sleep(0.08)
+            i += 1
+    finally:
+        sys.stdout.write("\r\033[K")
+        show_cursor()
+
+
 # ---------------------------------------------------------------------------
-# Interactive Arrow-Key Navigation (OpenCode Node-Line Style)
+# Zero-Flicker Interactive Arrow Selection (Buffer-based)
 # ---------------------------------------------------------------------------
 def select_menu(items: list, selected: int = 0, header_fn=None) -> int:
-    """
-    OpenCode-styled vertical connector node menu.
-    items: list of (title, description) tuples.
-    Returns: chosen index, or -1 on Esc/q.
-    """
+    """Zero-flicker OpenCode vertical connector node menu."""
     n = len(items)
-    while True:
-        clear_screen()
-        if header_fn:
-            header_fn()
+    clear_screen()
 
-        print(f"  {GREY}│{RESET}")
+    while True:
+        buf = ["\033[?25l\033[H"]
+        if header_fn:
+            for line in header_fn():
+                buf.append(line + "\033[K\n")
+
+        buf.append(f"  {GREEN}│{RESET}\033[K\n")
         for i, (title, desc) in enumerate(items):
             if i == selected:
                 cursor = f"{GREEN}❯ ●{RESET}"
@@ -184,10 +227,14 @@ def select_menu(items: list, selected: int = 0, header_fn=None) -> int:
                 title_fmt = f"{WHITE}{title:<34}{RESET}"
                 desc_fmt = f"{GREY}{desc}{RESET}"
 
-            print(f"{cursor}  {title_fmt}  {desc_fmt}")
-            print(f"  {GREY}│{RESET}")
+            buf.append(f"{cursor}  {title_fmt}  {desc_fmt}\033[K\n")
+            buf.append(f"  {GREEN}│{RESET}\033[K\n")
 
-        print(f"\n  {GREY}[↑/↓] Navigate   [Enter] Select   [Esc/q] Exit{RESET}")
+        buf.append(f"\n  {GREY}[↑/↓] Navigate   [Enter] Select   [Esc/q] Exit{RESET}\033[K\n")
+        buf.append("\033[J")
+
+        sys.stdout.write("".join(buf))
+        sys.stdout.flush()
 
         key = read_key()
         if key == "UP":
@@ -195,27 +242,28 @@ def select_menu(items: list, selected: int = 0, header_fn=None) -> int:
         elif key == "DOWN":
             selected = (selected + 1) % n
         elif key == "ENTER":
+            show_cursor()
             return selected
         elif key in ("ESC", "q"):
+            show_cursor()
             return -1
 
 
 def select_one(items: list, selected: int = 0, prompt: str = "Select an option:", header_fn=None) -> int:
-    """
-    Interactive single-selection list with node lines.
-    Returns: selected index, or -1 on cancel.
-    """
+    """Zero-flicker single selection list with node lines."""
     n = len(items)
     if n == 0:
         return -1
+    clear_screen()
 
     while True:
-        clear_screen()
+        buf = ["\033[?25l\033[H"]
         if header_fn:
-            header_fn()
+            for line in header_fn():
+                buf.append(line + "\033[K\n")
 
-        print(f"  {WHITE}{prompt}{RESET}\n")
-        print(f"  {GREY}│{RESET}")
+        buf.append(f"  {WHITE}{prompt}{RESET}\033[K\n\n")
+        buf.append(f"  {GREEN}│{RESET}\033[K\n")
         for i, item in enumerate(items):
             if i == selected:
                 cursor = f"{GREEN}❯ ●{RESET}"
@@ -224,10 +272,14 @@ def select_one(items: list, selected: int = 0, prompt: str = "Select an option:"
                 cursor = f"  {GREY}○{RESET}"
                 item_fmt = f"{WHITE}{str(item)}{RESET}"
 
-            print(f"{cursor}  {item_fmt}")
-            print(f"  {GREY}│{RESET}")
+            buf.append(f"{cursor}  {item_fmt}\033[K\n")
+            buf.append(f"  {GREEN}│{RESET}\033[K\n")
 
-        print(f"\n  {GREY}[↑/↓] Navigate   [Enter] Select   [Esc/q] Back{RESET}")
+        buf.append(f"\n  {GREY}[↑/↓] Navigate   [Enter] Select   [Esc/q] Back{RESET}\033[K\n")
+        buf.append("\033[J")
+
+        sys.stdout.write("".join(buf))
+        sys.stdout.flush()
 
         key = read_key()
         if key == "UP":
@@ -235,33 +287,31 @@ def select_one(items: list, selected: int = 0, prompt: str = "Select an option:"
         elif key == "DOWN":
             selected = (selected + 1) % n
         elif key == "ENTER":
+            show_cursor()
             return selected
         elif key in ("ESC", "q"):
+            show_cursor()
             return -1
 
 
 def select_multi(items: list, checked: list = None, prompt: str = "Select participants:", header_fn=None) -> list:
-    """
-    Interactive multi-select list with [✔] / [ ] toggled via Spacebar.
-    Returns: list of selected item values, or None if cancelled.
-    """
+    """Zero-flicker multi-select list with [✔] / [ ] toggled via Spacebar."""
     n = len(items)
     if n == 0:
         return []
 
-    if checked is None:
-        checked = [True] * n
-    else:
-        checked = list(checked)
-
+    checked = [True] * n if checked is None else list(checked)
     selected = 0
-    while True:
-        clear_screen()
-        if header_fn:
-            header_fn()
+    clear_screen()
 
-        print(f"  {WHITE}{prompt}{RESET}\n")
-        print(f"  {GREY}│{RESET}")
+    while True:
+        buf = ["\033[?25l\033[H"]
+        if header_fn:
+            for line in header_fn():
+                buf.append(line + "\033[K\n")
+
+        buf.append(f"  {WHITE}{prompt}{RESET}\033[K\n\n")
+        buf.append(f"  {GREEN}│{RESET}\033[K\n")
         for i, item in enumerate(items):
             box = f"{GREEN}[✔]{RESET}" if checked[i] else f"{GREY}[ ]{RESET}"
             if i == selected:
@@ -271,10 +321,14 @@ def select_multi(items: list, checked: list = None, prompt: str = "Select partic
                 cursor = f"  {GREY}○{RESET}"
                 item_fmt = f"{WHITE}{str(item)}{RESET}"
 
-            print(f"{cursor}  {box} {item_fmt}")
-            print(f"  {GREY}│{RESET}")
+            buf.append(f"{cursor}  {box} {item_fmt}\033[K\n")
+            buf.append(f"  {GREEN}│{RESET}\033[K\n")
 
-        print(f"\n  {GREY}[↑/↓] Navigate   [Space] Toggle   [Enter] Confirm   [a] All/None   [Esc/q] Cancel{RESET}")
+        buf.append(f"\n  {GREY}[↑/↓] Navigate   [Space] Toggle   [Enter] Confirm   [a] All/None   [Esc/q] Cancel{RESET}\033[K\n")
+        buf.append("\033[J")
+
+        sys.stdout.write("".join(buf))
+        sys.stdout.flush()
 
         key = read_key()
         if key == "UP":
@@ -284,27 +338,53 @@ def select_multi(items: list, checked: list = None, prompt: str = "Select partic
         elif key == "SPACE":
             checked[selected] = not checked[selected]
         elif key in ("a", "A"):
-            all_checked = all(checked)
-            checked = [not all_checked] * n
+            all_on = all(checked)
+            checked = [not all_on] * n
         elif key == "ENTER":
             chosen = [items[i] for i in range(n) if checked[i]]
             if not chosen:
-                print(f"\n  {GREY}Please select at least one participant.{RESET}")
-                time.sleep(0.8)
                 continue
+            show_cursor()
             return chosen
         elif key in ("ESC", "q"):
+            show_cursor()
             return None
 
 
 # ---------------------------------------------------------------------------
-# Tabular Formatting
+# Visual Card on Expense Confirmation
+# ---------------------------------------------------------------------------
+def render_expense_card(desc: str, amount: float, payer: str, count: int, share: float):
+    """Render a visual summary card for expense confirmation."""
+    inner_w = 42
+    title_str = truncate_visible(desc, 22)
+    amt_str = f"{CURRENCY} {amount:,.2f}"
+    split_str = f"{count} members ({CURRENCY} {share:,.2f} each)"
+
+    lines = [
+        f"  {GREY}Title:      {RESET} {WHITE}{title_str}{RESET}",
+        f"  {GREY}Amount:     {RESET} {BOLD_AMBER}{amt_str}{RESET}",
+        f"  {GREY}Paid By:    {RESET} {WHITE}{payer}{RESET}",
+        f"  {GREY}Split With: {RESET} {WHITE}{split_str}{RESET}"
+    ]
+
+    header_text = "── Expense Summary "
+    dashes = max(0, inner_w - len(header_text))
+    print(f"  {GREY}╭{header_text}{'─' * dashes}╮{RESET}")
+    for line in lines:
+        pad = max(0, inner_w - visible_len(line))
+        print(f"  {GREY}│{RESET}{line}{' ' * pad}{GREY}│{RESET}")
+    print(f"  {GREY}╰{'─' * inner_w}╯{RESET}")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Tabular Formatting with Emoji / Wide-Char Alignment
 # ---------------------------------------------------------------------------
 def render_table(headers: list, rows: list, alignments: list = None):
-    """Render Unicode box table adhering to the 4-color palette."""
+    """Render Unicode box table with proper wide-char padding."""
     num_cols = len(headers)
-    if not alignments:
-        alignments = ["L"] * num_cols
+    alignments = ["L"] * num_cols if not alignments else alignments
 
     widths = [visible_len(h) for h in headers]
     for row in rows:
@@ -320,7 +400,7 @@ def render_table(headers: list, rows: list, alignments: list = None):
     for i, h in enumerate(headers):
         w = col_widths[i]
         align = alignments[i]
-        pad = w - visible_len(h)
+        pad = max(0, w - visible_len(h))
         if align == "R":
             cell_str = f"{' ' * (pad - 1)}{BOLD_WHITE}{h}{RESET} "
         elif align == "C":
@@ -338,7 +418,7 @@ def render_table(headers: list, rows: list, alignments: list = None):
     if not rows:
         total_w = sum(col_widths) + len(col_widths) - 1
         msg = f"{GREY}No records{RESET}"
-        pad = total_w - visible_len(msg)
+        pad = max(0, total_w - visible_len(msg))
         print(f"  {GREY}│{RESET}{' ' * (pad // 2)}{msg}{' ' * (pad - pad // 2)}{GREY}│{RESET}")
     else:
         for row in rows:
@@ -377,8 +457,8 @@ def render_balances_table(breakdown: dict):
         consumed_str = f"{WHITE}{CURRENCY} {consumed:,.2f}{RESET}"
 
         if net > 0.01:
-            net_str = f"{GREEN}+{CURRENCY} {abs(net):,.2f}{RESET}"
-            status_str = f"{GREEN}▲ IS OWED{RESET}"
+            net_str = f"{BOLD_GREEN}+{CURRENCY} {abs(net):,.2f}{RESET}"
+            status_str = f"{BOLD_GREEN}▲ IS OWED{RESET}"
         elif net < -0.01:
             net_str = f"{WHITE}-{CURRENCY} {abs(net):,.2f}{RESET}"
             status_str = f"{GREY}▼ OWES{RESET}"
@@ -398,14 +478,14 @@ def render_balances_table(breakdown: dict):
 
 
 def render_expense_history(expenses: list):
-    """Render chronological expense log table."""
+    """Render chronological expense log table with truncated descriptions and emoji alignment."""
     headers = ["#", "Description", "Paid By", "Amount", "Split With", "Each Share"]
     alignments = ["C", "L", "L", "R", "L", "R"]
     rows = []
 
     for exp in expenses:
         exp_id = str(exp.get("id", "-"))
-        desc = exp["description"]
+        desc = truncate_visible(exp["description"], 15)
         payer = exp["payer"]
         amt = exp["amount"]
         parts = exp["participants"]
@@ -417,7 +497,7 @@ def render_expense_history(expenses: list):
             f"{GREY}{exp_id}{RESET}",
             f"{WHITE}{desc}{RESET}",
             f"{WHITE}{payer}{RESET}",
-            f"{WHITE}{CURRENCY} {amt:,.2f}{RESET}",
+            f"{BOLD_AMBER}{CURRENCY} {amt:,.2f}{RESET}",
             f"{GREY}{parts_str} ({len(parts)}){RESET}",
             f"{WHITE}{CURRENCY} {split_amt:,.2f}{RESET}"
         ])
@@ -432,13 +512,12 @@ def render_settlement_plan(transfers: list, net_balances: dict):
         return
 
     print(f"  {GREY}Reduced complex group debts to {WHITE}{len(transfers)}{GREY} direct transfer(s):{RESET}\n")
-
     for i, t in enumerate(transfers, start=1):
         debtor = t["from"]
         creditor = t["to"]
         amt = t["amount"]
 
-        tag = f"{WHITE}{CURRENCY} {amt:,.2f}{RESET}"
+        tag = f"{BOLD_AMBER}{CURRENCY} {amt:,.2f}{RESET}"
         line = (
             f"  {GREY}[#{i}]{RESET}  "
             f"{WHITE}{debtor:<12}{RESET}  "
@@ -446,5 +525,4 @@ def render_settlement_plan(transfers: list, net_balances: dict):
             f"{WHITE}{creditor:<12}{RESET}"
         )
         print(line)
-
     print()

@@ -1,4 +1,4 @@
-"""main.py - Menu-driven controller with arrow-key navigation for EvenSplit (CP-007)."""
+"""main.py - Menu controller with zero-flicker navigation and edit engine for EvenSplit (CP-007)."""
 
 import sys
 import data_manager
@@ -11,13 +11,15 @@ MENU_ITEMS = [
     ("View Member Net Balances", "Real-time ledger: who owes and who is owed"),
     ("Generate Minimum Settlement Plan", "Greedy cash-flow debt minimization"),
     ("Full Expense History", "Chronological audit log of all bills"),
-    ("Save / Reload Data (JSON)", "Persist state to data.json or reload"),
+    ("Edit Recorded Data", "Modify group name, members, or expenses"),
+    ("Open Saved Bill", "Load an existing bill from saved_bills/"),
+    ("Save Data (JSON)", "Persist state to saved_bills/ and data.json"),
     ("Exit", "Close EvenSplit")
 ]
 
 
 class EvenSplitApp:
-    """Main application controller managing state and navigation."""
+    """Main application controller managing state and zero-flicker UI flows."""
 
     def __init__(self):
         self.group_name = ""
@@ -32,18 +34,27 @@ class EvenSplitApp:
                 self.members = loaded_members
                 self.expenses = loaded_expenses
 
-    def render_app_header(self):
-        """Render top header and group state hint."""
-        tui.render_header()
+    def render_app_header(self) -> list[str]:
+        """Return header lines with prominent group status banner."""
+        lines = tui.get_header_lines()
         if self.group_name:
             count = len(self.members)
             label = f"{count} member{'s' if count != 1 else ''}"
-            print(f"  {tui.WHITE}{self.group_name}{tui.RESET}  {tui.GREY}•  {label}{tui.RESET}\n")
+            total = sum(e.get("amount", 0.0) for e in self.expenses)
+            spend_tag = f"{tui.CURRENCY} {total:,.2f}"
+            lines.append(
+                f"  {tui.BOLD_AMBER}{self.group_name}{tui.RESET}  "
+                f"{tui.GREY}•{tui.RESET}  {tui.WHITE}{label}{tui.RESET}  "
+                f"{tui.GREY}•{tui.RESET}  {tui.BOLD_AMBER}{spend_tag}{tui.RESET}"
+            )
+            lines.append("")
         else:
-            tui.hint("(No group created yet. Select 'Create Group & Add Members' to begin)\n")
+            lines.append(f"  {tui.GREY}(No group created yet. Select 'Create Group & Add Members' to begin){tui.RESET}")
+            lines.append("")
+        return lines
 
     def run(self):
-        """Main application navigation loop."""
+        """Zero-flicker main menu loop."""
         selected_index = 0
         while True:
             try:
@@ -53,7 +64,7 @@ class EvenSplitApp:
                     header_fn=self.render_app_header
                 )
 
-                if choice == -1 or choice == 6:  # Esc/q or Exit
+                if choice == -1 or choice == 8:  # Esc/q or Exit
                     if self.handle_exit():
                         break
                     continue
@@ -71,21 +82,53 @@ class EvenSplitApp:
                 elif choice == 4:
                     self.handle_expense_history()
                 elif choice == 5:
-                    self.handle_save_reload()
+                    self.handle_edit_engine()
+                elif choice == 6:
+                    self.handle_open_saved_bill()
+                elif choice == 7:
+                    self.handle_save_data()
 
             except (KeyboardInterrupt, EOFError):
                 if self.handle_exit():
                     break
 
-    def handle_group_and_members(self):
-        """Feature 1: Group name and member registration."""
+    def live_add_members(self):
+        """Live appending member registration loop with immediate node display."""
         while True:
             tui.clear_screen()
-            self.render_app_header()
+            for line in self.render_app_header():
+                print(line)
 
+            print(f"  {tui.WHITE}Group Members:{tui.RESET}")
+            if not self.members:
+                print(f"  {tui.GREY}(No members registered yet){tui.RESET}")
+            else:
+                for m in self.members:
+                    print(f"  {tui.GREEN}│{tui.RESET}  {tui.GREEN}●{tui.RESET} {tui.WHITE}{m}{tui.RESET}")
+            print(f"  {tui.GREEN}│{tui.RESET}\n")
+
+            name = tui.prompt_input("Enter member name (or press Enter to finish)")
+            if not name:
+                break
+
+            parts = [p.strip() for p in name.split(",") if p.strip()]
+            for p in parts:
+                try:
+                    engine.add_member(self.members, p)
+                    self.is_dirty = True
+                except ValueError as err:
+                    print(f"  {tui.GREY}✖{tui.RESET}  {tui.WHITE}{err}{tui.RESET}")
+                    tui.pause()
+
+    def handle_group_and_members(self):
+        """Feature 1: Group naming and live member registration."""
+        while True:
+            tui.clear_screen()
             if not self.group_name:
+                for line in self.render_app_header():
+                    print(line)
                 print(f"  {tui.WHITE}Create a New Expense Group{tui.RESET}\n")
-                new_group = tui.prompt_input("Enter group name (e.g. Weekend Trip, Apartment 4B)")
+                new_group = tui.prompt_input("Enter group name (e.g. Kanak bday, Goa Trip)")
                 if new_group:
                     self.group_name = new_group
                     self.is_dirty = True
@@ -101,42 +144,27 @@ class EvenSplitApp:
                 header_fn=self.render_app_header
             )
 
-            if action_idx in (-1, 2):  # Back / Cancel
+            if action_idx in (-1, 2):
                 return
 
-            if action_idx == 0:  # Add member
+            if action_idx == 0:
+                self.live_add_members()
+            elif action_idx == 1:
                 tui.clear_screen()
-                self.render_app_header()
-                tui.hint("Enter a single name or comma-separated names (e.g. Alice, Bob, Charlie).")
-                raw = tui.prompt_input("Member name(s)")
-                if raw:
-                    names = [n.strip() for n in raw.split(",") if n.strip()]
-                    added = 0
-                    for name in names:
-                        try:
-                            m = engine.add_member(self.members, name)
-                            tui.success(f"Added member: {m}")
-                            added += 1
-                        except ValueError as err:
-                            tui.error(str(err))
-                    if added > 0:
-                        self.is_dirty = True
-                tui.pause()
-
-            elif action_idx == 1:  # Rename group
-                tui.clear_screen()
-                self.render_app_header()
+                for line in self.render_app_header():
+                    print(line)
                 new_name = tui.prompt_input("New group name", default=self.group_name)
                 if new_name:
                     self.group_name = new_name
                     self.is_dirty = True
                     tui.success(f"Group renamed to '{self.group_name}'")
-                tui.pause()
+                    tui.pause()
 
     def handle_add_expense(self):
-        """Feature 2: Record a shared expense with interactive selections."""
+        """Feature 2: Record a shared expense with visual confirmation card."""
         tui.clear_screen()
-        self.render_app_header()
+        for line in self.render_app_header():
+            print(line)
 
         if len(self.members) < 2:
             tui.hint("Need at least 2 members to record a shared expense.")
@@ -144,7 +172,7 @@ class EvenSplitApp:
             tui.pause()
             return
 
-        desc = tui.prompt_input("Expense description (e.g. Dinner, Groceries)")
+        desc = tui.prompt_input("Expense description (e.g. Starters, Villa Booking)")
         if not desc:
             return
 
@@ -181,13 +209,9 @@ class EvenSplitApp:
 
         share = round(amount / len(participants), 2)
         tui.clear_screen()
-        self.render_app_header()
-        print(f"  {tui.WHITE}Expense Summary:{tui.RESET}")
-        print(f"  {tui.GREY}Description :{tui.RESET} {tui.WHITE}{desc}{tui.RESET}")
-        print(f"  {tui.GREY}Total Amount:{tui.RESET} {tui.WHITE}{tui.CURRENCY} {amount:,.2f}{tui.RESET}")
-        print(f"  {tui.GREY}Paid By     :{tui.RESET} {tui.WHITE}{payer}{tui.RESET}")
-        print(f"  {tui.GREY}Participants:{tui.RESET} {tui.WHITE}{', '.join(participants)} ({len(participants)}){tui.RESET}")
-        print(f"  {tui.GREY}Each Shares :{tui.RESET} {tui.WHITE}{tui.CURRENCY} {share:,.2f}{tui.RESET}\n")
+        for line in self.render_app_header():
+            print(line)
+        tui.render_expense_card(desc, amount, payer, len(participants), share)
 
         confirm = tui.select_one(
             ["Yes, record expense", "Cancel"],
@@ -198,6 +222,9 @@ class EvenSplitApp:
             tui.spinner("Recording expense...", 0.6)
             engine.record_expense(self.expenses, self.members, desc, amount, payer, participants)
             self.is_dirty = True
+            tui.clear_screen()
+            for line in self.render_app_header():
+                print(line)
             tui.success("Expense recorded successfully.")
         else:
             tui.hint("Expense cancelled.")
@@ -206,7 +233,8 @@ class EvenSplitApp:
     def handle_view_balances(self):
         """Feature 3: Display member net balance ledger."""
         tui.clear_screen()
-        self.render_app_header()
+        for line in self.render_app_header():
+            print(line)
 
         if not self.members:
             tui.hint("(No members registered yet)")
@@ -219,9 +247,10 @@ class EvenSplitApp:
         tui.pause()
 
     def handle_settlement_plan(self):
-        """Feature 4: Run greedy minimization algorithm."""
+        """Feature 4: Run greedy cash-flow minimization algorithm."""
         tui.clear_screen()
-        self.render_app_header()
+        for line in self.render_app_header():
+            print(line)
 
         if not self.members:
             tui.hint("(No members registered yet)")
@@ -240,9 +269,10 @@ class EvenSplitApp:
         tui.pause()
 
     def handle_expense_history(self):
-        """Feature 5: Full chronological expense log."""
+        """Feature 5: Chronological expense log with emoji width alignment."""
         tui.clear_screen()
-        self.render_app_header()
+        for line in self.render_app_header():
+            print(line)
 
         if not self.expenses:
             tui.hint("(No expenses recorded yet)")
@@ -250,43 +280,229 @@ class EvenSplitApp:
             tui.render_expense_history(self.expenses)
         tui.pause()
 
-    def handle_save_reload(self):
-        """Feature 6: Persist or reload JSON storage."""
-        actions = [
-            f"Save Data to {data_manager.DEFAULT_FILEPATH}",
-            f"Reload Data from {data_manager.DEFAULT_FILEPATH}",
-            "Back to Main Menu"
+    def handle_edit_engine(self):
+        """Feature 6: Universal Edit Engine for group, members, and expenses."""
+        while True:
+            actions = [
+                "Edit Group Name",
+                "Edit / Add / Remove Members",
+                "Edit / Delete an Expense",
+                "Back"
+            ]
+            choice = tui.select_one(actions, prompt="Universal Edit Engine:", header_fn=self.render_app_header)
+            if choice in (-1, 3):
+                return
+
+            if choice == 0:
+                tui.clear_screen()
+                for line in self.render_app_header():
+                    print(line)
+                new_name = tui.prompt_input("Enter new group name", default=self.group_name)
+                if new_name and new_name != self.group_name:
+                    self.group_name = new_name
+                    self.is_dirty = True
+                    tui.success(f"Group name updated to '{self.group_name}'.")
+                tui.pause()
+
+            elif choice == 1:
+                self.handle_edit_members()
+
+            elif choice == 2:
+                self.handle_edit_expenses()
+
+    def handle_edit_members(self):
+        """Sub-menu for editing member list."""
+        while True:
+            actions = ["Add Member(s)", "Rename a Member", "Remove a Member", "Back"]
+            c = tui.select_one(actions, prompt="Member Management:", header_fn=self.render_app_header)
+            if c in (-1, 3):
+                return
+
+            if c == 0:
+                self.live_add_members()
+            elif c == 1:
+                if not self.members:
+                    tui.clear_screen()
+                    tui.hint("No members to rename.")
+                    tui.pause()
+                    continue
+                m_idx = tui.select_one(self.members, prompt="Select member to rename:", header_fn=self.render_app_header)
+                if m_idx != -1:
+                    old_m = self.members[m_idx]
+                    tui.clear_screen()
+                    for line in self.render_app_header():
+                        print(line)
+                    new_m = tui.prompt_input(f"Enter new name for '{old_m}'")
+                    if new_m:
+                        try:
+                            engine.rename_member(self.members, self.expenses, old_m, new_m)
+                            self.is_dirty = True
+                            tui.success(f"Renamed '{old_m}' to '{new_m}'.")
+                        except ValueError as err:
+                            tui.error(str(err))
+                    tui.pause()
+            elif c == 2:
+                if not self.members:
+                    tui.clear_screen()
+                    tui.hint("No members to remove.")
+                    tui.pause()
+                    continue
+                m_idx = tui.select_one(self.members, prompt="Select member to remove:", header_fn=self.render_app_header)
+                if m_idx != -1:
+                    target = self.members[m_idx]
+                    tui.clear_screen()
+                    for line in self.render_app_header():
+                        print(line)
+                    try:
+                        engine.delete_member(self.members, self.expenses, target)
+                        self.is_dirty = True
+                        tui.success(f"Removed member '{target}'.")
+                    except ValueError as err:
+                        tui.error(str(err))
+                    tui.pause()
+
+    def handle_edit_expenses(self):
+        """Sub-menu for modifying or deleting expenses."""
+        while True:
+            if not self.expenses:
+                tui.clear_screen()
+                for line in self.render_app_header():
+                    print(line)
+                tui.hint("No expenses recorded to edit.")
+                tui.pause()
+                return
+
+            labels = [
+                f"#{e.get('id', i+1)} {tui.truncate_visible(e['description'], 16)} - {tui.CURRENCY} {e['amount']:,.2f} ({e['payer']})"
+                for i, e in enumerate(self.expenses)
+            ]
+            labels.append("Back")
+
+            idx = tui.select_one(labels, prompt="Select an expense to modify:", header_fn=self.render_app_header)
+            if idx in (-1, len(self.expenses)):
+                return
+
+            target = self.expenses[idx]
+            exp_actions = [
+                f"Edit Description ({tui.truncate_visible(target['description'], 16)})",
+                f"Edit Amount ({tui.CURRENCY} {target['amount']:,.2f})",
+                f"Edit Payer ({target['payer']})",
+                f"Edit Participants ({len(target['participants'])} members)",
+                "Delete This Expense",
+                "Back"
+            ]
+            action = tui.select_one(exp_actions, prompt=f"Modify Expense #{target.get('id', idx+1)}:", header_fn=self.render_app_header)
+            if action in (-1, 5):
+                continue
+
+            if action == 0:
+                tui.clear_screen()
+                for line in self.render_app_header():
+                    print(line)
+                new_desc = tui.prompt_input("New description", default=target["description"])
+                if new_desc:
+                    engine.update_expense(self.expenses, self.members, target["id"], desc=new_desc)
+                    self.is_dirty = True
+                    tui.success("Description updated.")
+                tui.pause()
+            elif action == 1:
+                tui.clear_screen()
+                for line in self.render_app_header():
+                    print(line)
+                new_amt = tui.prompt_input(f"New amount in {tui.CURRENCY}", default=str(target["amount"]))
+                try:
+                    engine.update_expense(self.expenses, self.members, target["id"], amount=float(new_amt))
+                    self.is_dirty = True
+                    tui.success("Amount updated.")
+                except ValueError as err:
+                    tui.error(str(err))
+                tui.pause()
+            elif action == 2:
+                p_idx = tui.select_one(self.members, prompt="Select new payer:", header_fn=self.render_app_header)
+                if p_idx != -1:
+                    engine.update_expense(self.expenses, self.members, target["id"], payer=self.members[p_idx])
+                    self.is_dirty = True
+                    tui.success("Payer updated.")
+                tui.pause()
+            elif action == 3:
+                pre = [m in target["participants"] for m in self.members]
+                parts = tui.select_multi(self.members, checked=pre, prompt="Select participants:", header_fn=self.render_app_header)
+                if parts:
+                    engine.update_expense(self.expenses, self.members, target["id"], participants=parts)
+                    self.is_dirty = True
+                    tui.success("Participants updated.")
+                tui.pause()
+            elif action == 4:
+                confirm = tui.select_one(["Yes, delete expense", "Cancel"], prompt="Are you sure you want to delete this expense?", header_fn=self.render_app_header)
+                if confirm == 0:
+                    engine.delete_expense(self.expenses, target["id"])
+                    self.is_dirty = True
+                    tui.success("Expense deleted.")
+                tui.pause()
+
+    def handle_open_saved_bill(self):
+        """Feature 7: Open and load a bill from saved_bills/ directory."""
+        tui.clear_screen()
+        bills = data_manager.list_saved_bills()
+        if not bills:
+            for line in self.render_app_header():
+                print(line)
+            tui.hint(f"No saved bills found in '{data_manager.SAVED_BILLS_DIR}/'.")
+            tui.pause()
+            return
+
+        options = [
+            f"{b['group_name']}  {tui.GREY}•  {b['members_count']} members  •  {tui.CURRENCY} {b['total_spend']:,.2f}  ({b['filename']}){tui.RESET}"
+            for b in bills
         ]
-        choice = tui.select_one(
-            actions,
-            prompt="Data Persistence (JSON):",
-            header_fn=self.render_app_header
-        )
+        options.append("Back")
 
-        if choice == 0:
-            tui.spinner("Saving data...", 0.6)
-            if data_manager.save_data(self.group_name, self.members, self.expenses):
-                self.is_dirty = False
-                tui.success(f"Data saved to {data_manager.DEFAULT_FILEPATH}.")
-            else:
-                tui.error("Failed to save data.")
+        choice = tui.select_one(options, prompt="Open Saved Bill:", header_fn=self.render_app_header)
+        if choice in (-1, len(bills)):
+            return
+
+        selected_bill = bills[choice]
+        tui.spinner(f"Loading '{selected_bill['group_name']}'...", 0.5)
+        name, members, expenses = data_manager.load_data(selected_bill["filepath"])
+        self.group_name = name
+        self.members = members
+        self.expenses = expenses
+        self.is_dirty = False
+
+        tui.clear_screen()
+        for line in self.render_app_header():
+            print(line)
+        tui.success(f"Successfully loaded '{self.group_name}'.")
+        tui.pause()
+
+    def handle_save_data(self):
+        """Feature 8: Save data to saved_bills/<slug>.json and data.json."""
+        if not self.group_name:
+            tui.clear_screen()
+            for line in self.render_app_header():
+                print(line)
+            tui.hint("Please create a group before saving.")
             tui.pause()
+            return
 
-        elif choice == 1:
-            tui.spinner("Reloading data...", 0.6)
-            name, members, expenses = data_manager.load_data()
-            self.group_name = name
-            self.members = members
-            self.expenses = expenses
+        tui.spinner("Saving data...", 0.5)
+        ok, path = data_manager.save_data(self.group_name, self.members, self.expenses)
+        if ok:
             self.is_dirty = False
-            tui.success(f"Loaded '{self.group_name or 'Untitled'}' with {len(self.members)} members.")
-            tui.pause()
+            tui.clear_screen()
+            for line in self.render_app_header():
+                print(line)
+            tui.success(f"Saved to '{path}' and backed up in data.json.")
+        else:
+            tui.error("Failed to save data.")
+        tui.pause()
 
     def handle_exit(self) -> bool:
         """Handle application exit with dirty-check prompt."""
-        if self.is_dirty:
+        if self.is_dirty and self.group_name:
             tui.clear_screen()
-            self.render_app_header()
+            for line in self.render_app_header():
+                print(line)
             choice = tui.select_one(
                 ["Save and exit", "Exit without saving", "Cancel"],
                 prompt="You have unsaved changes:",
@@ -304,30 +520,31 @@ class EvenSplitApp:
 
 
 def run_demo():
-    """Non-interactive showcase of EvenSplit."""
+    """Non-interactive showcase of EvenSplit with refined amber highlights and cards."""
     tui.clear_screen()
     tui.render_header()
-    print(f"  {tui.GREEN}⚡ EVENSPLIT DEMO SHOWCASE{tui.RESET}\n")
+    print(f"  {tui.BOLD_AMBER}Kanak bday{tui.RESET}  {tui.GREY}•  4 members  •  {tui.BOLD_AMBER}₹ 17,500.00{tui.RESET}\n")
 
     members = ["Alice", "Bob", "Charlie", "Diana"]
     expenses = [
         {"id": 1, "description": "Airbnb Villa", "amount": 12000.0, "payer": "Alice", "participants": members, "split_amount": 3000.0},
-        {"id": 2, "description": "Seafood Dinner", "amount": 4000.0, "payer": "Bob", "participants": ["Alice", "Bob", "Charlie"], "split_amount": 1333.33},
+        {"id": 2, "description": "Starters & Grill 🍔", "amount": 4000.0, "payer": "Bob", "participants": ["Alice", "Bob", "Charlie"], "split_amount": 1333.33},
         {"id": 3, "description": "Scooter Rentals", "amount": 1500.0, "payer": "Charlie", "participants": ["Bob", "Charlie", "Diana"], "split_amount": 500.0}
     ]
 
-    print(f"  {tui.WHITE}Trip to Goa{tui.RESET}  {tui.GREY}•  4 members  •  3 bills (₹ 17,500.00){tui.RESET}\n")
+    tui.hint("1. Visual Expense Confirmation Card:")
+    tui.render_expense_card("Starters & Grill 🍔", 4000.0, "Bob", 3, 1333.33)
 
-    tui.hint("1. Expense History")
+    tui.hint("2. Expense History (Emoji & Width Aligned):")
     tui.render_expense_history(expenses)
     print()
 
-    tui.hint("2. Net Balances Ledger")
+    tui.hint("3. Net Balances Ledger:")
     breakdown = engine.get_member_breakdown(members, expenses)
     tui.render_balances_table(breakdown)
     print()
 
-    tui.hint("3. Greedy Minimum Settlement Plan")
+    tui.hint("4. Greedy Minimum Settlement Plan:")
     net_balances = engine.calculate_net_balances(members, expenses)
     transfers = engine.compute_min_settlements(net_balances)
     tui.render_settlement_plan(transfers, net_balances)
@@ -352,7 +569,7 @@ def main():
         elif arg in ("--help", "-h"):
             print("EvenSplit (CP-007): Group Expense Settlement Optimizer")
             print("Usage: python main.py [OPTION]\n")
-            print("  (no args)    Interactive arrow-key console application")
+            print("  (no args)    Interactive zero-flicker arrow-key console application")
             print("  --demo, -d   Run non-interactive showcase")
             print("  --test, -t   Run automated unit tests")
             print("  --help, -h   Show help message")
