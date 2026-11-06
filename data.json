@@ -1,0 +1,48 @@
+{
+    "group_name": "Trip to Goa 2026",
+    "members": [
+        "Alice",
+        "Bob",
+        "Charlie",
+        "Diana"
+    ],
+    "expenses": [
+        {
+            "id": 1,
+            "description": "Airbnb Beach Villa",
+            "amount": 12000.0,
+            "payer": "Alice",
+            "participants": [
+                "Alice",
+                "Bob",
+                "Charlie",
+                "Diana"
+            ],
+            "split_amount": 3000.0
+        },
+        {
+            "id": 2,
+            "description": "Seafood & Grill Dinner",
+            "amount": 4000.0,
+            "payer": "Bob",
+            "participants": [
+                "Alice",
+                "Bob",
+                "Charlie"
+            ],
+            "split_amount": 1333.33
+        },
+        {
+            "id": 3,
+            "description": "Scooter Rentals & Fuel",
+            "amount": 1500.0,
+            "payer": "Charlie",
+            "participants": [
+                "Bob",
+                "Charlie",
+                "Diana"
+            ],
+            "split_amount": 500.0
+        }
+    ]
+}
