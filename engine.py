@@ -1,6 +1,50 @@
-"""engine.py - Core calculation, settlement, and edit engine for EvenSplit (CP-007)."""
+"""engine.py - Core calculation, settlement, math evaluation, and edit engine for EvenSplit (CP-007)."""
 
+import ast
 import math
+import operator
+
+_MATH_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+
+def parse_amount(text: str) -> float:
+    """Safely parse a numeric amount or basic arithmetic expression (+, -, *, /)."""
+    clean = str(text).strip()
+    if not clean:
+        raise ValueError("Amount cannot be empty.")
+
+    try:
+        tree = ast.parse(clean, mode="eval")
+    except SyntaxError:
+        raise ValueError("Invalid mathematical syntax.")
+
+    def _eval(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        elif isinstance(node, ast.UnaryOp) and type(node.op) in _MATH_OPS:
+            return _MATH_OPS[type(node.op)](_eval(node.operand))
+        elif isinstance(node, ast.BinOp) and type(node.op) in _MATH_OPS:
+            left = _eval(node.left)
+            right = _eval(node.right)
+            if isinstance(node.op, ast.Div) and right == 0:
+                raise ZeroDivisionError("Division by zero.")
+            return _MATH_OPS[type(node.op)](left, right)
+        raise ValueError("Only basic arithmetic (+, -, *, /) is supported.")
+
+    try:
+        res = round(_eval(tree.body), 2)
+    except ZeroDivisionError:
+        raise ValueError("Division by zero is not allowed.")
+    if res <= 0 or math.isnan(res) or math.isinf(res):
+        raise ValueError("Amount must be greater than zero.")
+    return res
 
 
 def add_member(members: list, name: str) -> str:
@@ -33,13 +77,11 @@ def rename_member(members: list, expenses: list, old_name: str, new_name: str) -
             if existing.lower() == clean_lower:
                 raise ValueError(f"Member '{clean_new}' already exists.")
 
-    # Update members list
     for i, m in enumerate(members):
         if m.lower() == old_name.lower():
             members[i] = clean_new
             break
 
-    # Cascade to expenses
     for exp in expenses:
         if exp["payer"].lower() == old_name.lower():
             exp["payer"] = clean_new
@@ -53,15 +95,12 @@ def rename_member(members: list, expenses: list, old_name: str, new_name: str) -
 
 def delete_member(members: list, expenses: list, member_name: str) -> bool:
     """Remove a member if they have not paid any bills, updating participant lists."""
-    # Check if payer on any bill
     for exp in expenses:
         if exp["payer"].lower() == member_name.lower():
             raise ValueError(f"Cannot delete '{member_name}': payer of expense #{exp.get('id', '')}.")
 
-    # Remove from member list
     members[:] = [m for m in members if m.lower() != member_name.lower()]
 
-    # Remove from participants and recalculate split
     for exp in expenses:
         exp["participants"] = [p for p in exp["participants"] if p.lower() != member_name.lower()]
         if not exp["participants"]:
@@ -71,20 +110,20 @@ def delete_member(members: list, expenses: list, member_name: str) -> bool:
     return True
 
 
-def record_expense(expenses: list, members: list, desc: str, amount: float, payer: str, participants: list) -> dict:
+def record_expense(expenses: list, members: list, desc: str, amount, payer: str, participants: list) -> dict:
     """Validate and record a shared expense split equally among participants."""
     if not desc or not desc.strip():
         raise ValueError("Expense description cannot be empty.")
     clean_desc = desc.strip()
 
-    try:
-        val = float(amount)
-    except (TypeError, ValueError):
-        raise ValueError("Amount must be a valid number.")
-
-    if val <= 0 or math.isnan(val) or math.isinf(val):
-        raise ValueError("Amount must be greater than zero.")
-    val = round(val, 2)
+    if isinstance(amount, (int, float)):
+        val = round(float(amount), 2)
+        if val <= 0 or math.isnan(val) or math.isinf(val):
+            raise ValueError("Amount must be greater than zero.")
+    elif isinstance(amount, str):
+        val = parse_amount(amount)
+    else:
+        raise ValueError("Amount must be a valid number or expression.")
 
     def find_member(n):
         for m in members:
@@ -126,7 +165,7 @@ def record_expense(expenses: list, members: list, desc: str, amount: float, paye
     return expense
 
 
-def update_expense(expenses: list, members: list, expense_id: int, desc: str = None, amount: float = None, payer: str = None, participants: list = None) -> dict:
+def update_expense(expenses: list, members: list, expense_id: int, desc: str = None, amount=None, payer: str = None, participants: list = None) -> dict:
     """Update fields on an existing expense and recompute split amount."""
     target = None
     for exp in expenses:
@@ -143,10 +182,13 @@ def update_expense(expenses: list, members: list, expense_id: int, desc: str = N
         target["description"] = desc.strip()
 
     if amount is not None:
-        val = float(amount)
-        if val <= 0:
-            raise ValueError("Amount must be positive.")
-        target["amount"] = round(val, 2)
+        if isinstance(amount, (int, float)):
+            val = round(float(amount), 2)
+            if val <= 0:
+                raise ValueError("Amount must be positive.")
+        else:
+            val = parse_amount(str(amount))
+        target["amount"] = val
 
     if payer is not None:
         if payer not in members:

@@ -66,9 +66,21 @@ def truncate_visible(text: str, max_w: int = 15) -> str:
     return "".join(res) + "..."
 
 
+def enter_alt_screen():
+    """Enter ANSI alternate screen buffer and clear screen/scrollback."""
+    sys.stdout.write("\033[?1049h\033[2J\033[3J\033[H")
+    sys.stdout.flush()
+
+
+def exit_alt_screen():
+    """Restore normal terminal buffer and show cursor."""
+    sys.stdout.write("\033[?1049l\033[?25h")
+    sys.stdout.flush()
+
+
 def clear_screen():
-    """Clear screen completely and move cursor to home (used on screen transitions)."""
-    sys.stdout.write("\033[2J\033[H")
+    """Clear viewport and scrollback buffer cleanly and move cursor to home."""
+    sys.stdout.write("\033[2J\033[3J\033[H")
     sys.stdout.flush()
 
 
@@ -160,9 +172,9 @@ def error(message: str):
     print(f"  {GREY}✖{RESET}  {WHITE}{message}{RESET}")
 
 
-def pause():
+def pause(message: str = "Press any key to continue..."):
     """Wait for user keypress to return."""
-    print(f"\n  {GREY}Press any key to continue...{RESET}", end="", flush=True)
+    print(f"\n  {GREY}{message}{RESET}", end="", flush=True)
     try:
         read_key()
     except (KeyboardInterrupt, EOFError):
@@ -356,28 +368,37 @@ def select_multi(items: list, checked: list = None, prompt: str = "Select partic
 # ---------------------------------------------------------------------------
 # Visual Card on Expense Confirmation
 # ---------------------------------------------------------------------------
-def render_expense_card(desc: str, amount: float, payer: str, count: int, share: float):
-    """Render a visual summary card for expense confirmation."""
-    inner_w = 42
-    title_str = truncate_visible(desc, 22)
+def get_expense_card_lines(desc: str, amount: float, payer: str, count: int, share: float) -> list[str]:
+    """Return lines for the visual summary card for expense confirmation."""
+    inner_w = 44
+    title_str = truncate_visible(desc, 24)
     amt_str = f"{CURRENCY} {amount:,.2f}"
     split_str = f"{count} members ({CURRENCY} {share:,.2f} each)"
 
-    lines = [
-        f"  {GREY}Title:      {RESET} {WHITE}{title_str}{RESET}",
-        f"  {GREY}Amount:     {RESET} {BOLD_AMBER}{amt_str}{RESET}",
-        f"  {GREY}Paid By:    {RESET} {WHITE}{payer}{RESET}",
-        f"  {GREY}Split With: {RESET} {WHITE}{split_str}{RESET}"
+    fields = [
+        ("Title:", f"{WHITE}{title_str}{RESET}"),
+        ("Total:", f"{BOLD_AMBER}{amt_str}{RESET}"),
+        ("Paid By:", f"{WHITE}{payer}{RESET}"),
+        ("Split With:", f"{WHITE}{split_str}{RESET}")
     ]
 
     header_text = "── Expense Summary "
     dashes = max(0, inner_w - len(header_text))
-    print(f"  {GREY}╭{header_text}{'─' * dashes}╮{RESET}")
-    for line in lines:
-        pad = max(0, inner_w - visible_len(line))
-        print(f"  {GREY}│{RESET}{line}{' ' * pad}{GREY}│{RESET}")
-    print(f"  {GREY}╰{'─' * inner_w}╯{RESET}")
-    print()
+    card = [f"  {GREY}╭{header_text}{'─' * dashes}╮{RESET}"]
+    for label, val in fields:
+        prefix = f"  {label:<12}"
+        content = f"{GREY}{prefix}{RESET}{val}"
+        pad = max(0, inner_w - visible_len(content))
+        card.append(f"  {GREY}│{RESET}{content}{' ' * pad}{GREY}│{RESET}")
+    card.append(f"  {GREY}╰{'─' * inner_w}╯{RESET}")
+    card.append("")
+    return card
+
+
+def render_expense_card(desc: str, amount: float, payer: str, count: int, share: float):
+    """Render a visual summary card for expense confirmation."""
+    for line in get_expense_card_lines(desc, amount, payer, count, share):
+        print(line)
 
 
 # ---------------------------------------------------------------------------

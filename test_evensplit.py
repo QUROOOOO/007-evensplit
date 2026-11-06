@@ -162,6 +162,32 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(expenses[0]["participants"], ["Alice", "Bob"])
         self.assertEqual(expenses[0]["split_amount"], 30.0)
 
+    def test_parse_amount_valid_literals(self):
+        self.assertEqual(engine.parse_amount("40"), 40.0)
+        self.assertEqual(engine.parse_amount("150.50"), 150.50)
+        self.assertEqual(engine.parse_amount("  99.9  "), 99.9)
+
+    def test_parse_amount_valid_expressions(self):
+        self.assertEqual(engine.parse_amount("10 * 4"), 40.0)
+        self.assertEqual(engine.parse_amount("25 + 30 + 15"), 70.0)
+        self.assertEqual(engine.parse_amount("500 / 4"), 125.0)
+        self.assertEqual(engine.parse_amount("100 - 25.50"), 74.50)
+        self.assertEqual(engine.parse_amount("(10 + 5) * 2"), 30.0)
+
+    def test_parse_amount_invalid(self):
+        with self.assertRaises(ValueError):
+            engine.parse_amount("0")
+        with self.assertRaises(ValueError):
+            engine.parse_amount("-50")
+        with self.assertRaises(ValueError):
+            engine.parse_amount("10 / 0")
+        with self.assertRaises(ValueError):
+            engine.parse_amount("invalid_text")
+        with self.assertRaises(ValueError):
+            engine.parse_amount("__import__('os')")
+        with self.assertRaises(ValueError):
+            engine.parse_amount("")
+
     def test_edit_engine_update_and_delete_expense(self):
         members = ["Alice", "Bob"]
         expenses = [
@@ -219,6 +245,14 @@ class TestDataManager(unittest.TestCase):
         self.assertEqual(bills[0]["group_name"], "Kanak Bday")
         self.assertEqual(bills[0]["members_count"], 2)
         self.assertEqual(bills[0]["total_spend"], 500.0)
+
+    def test_rename_group_cleans_old_file(self):
+        data_manager.save_data("Trip Goa", ["A", "B"], [], filepath=self.test_file)
+        self.assertTrue(os.path.isfile(os.path.join(self.test_dir, "trip_goa.json")))
+
+        data_manager.save_data("Trip Manali", ["A", "B"], [], filepath=self.test_file, old_group_name="Trip Goa")
+        self.assertFalse(os.path.isfile(os.path.join(self.test_dir, "trip_goa.json")))
+        self.assertTrue(os.path.isfile(os.path.join(self.test_dir, "trip_manali.json")))
 
     def test_load_non_existent(self):
         loaded_name, loaded_members, loaded_expenses = data_manager.load_data("non_existent_file_xyz.json")

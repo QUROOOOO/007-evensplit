@@ -15,7 +15,7 @@ def slugify(text: str) -> str:
     return slug or "untitled_group"
 
 
-def save_data(group_name: str, members: list, expenses: list, filepath: str = DEFAULT_FILEPATH) -> tuple[bool, str]:
+def save_data(group_name: str, members: list, expenses: list, filepath: str = DEFAULT_FILEPATH, old_group_name: str = "") -> tuple[bool, str]:
     """Save group state to JSON files (saved_bills/ and primary data.json)."""
     payload = {
         "group_name": group_name,
@@ -36,6 +36,17 @@ def save_data(group_name: str, members: list, expenses: list, filepath: str = DE
             with open(named_path, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=4, ensure_ascii=False)
             saved_path = named_path
+
+            # Clean up old slug file if renamed
+            if old_group_name and old_group_name.strip():
+                old_slug = slugify(old_group_name)
+                if old_slug != slug:
+                    old_path = os.path.join(SAVED_BILLS_DIR, f"{old_slug}.json")
+                    if os.path.isfile(old_path):
+                        try:
+                            os.remove(old_path)
+                        except OSError:
+                            pass
 
         return True, saved_path
     except (OSError, IOError):

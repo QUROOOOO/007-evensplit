@@ -28,6 +28,17 @@ class EvenSplitApp:
         self.expenses = []
         self.is_dirty = False
 
+    def auto_persist(self, old_group_name: str = ""):
+        """Silently auto-persist state to disk if a group exists."""
+        if self.group_name and self.group_name.strip():
+            data_manager.save_data(
+                self.group_name,
+                self.members,
+                self.expenses,
+                old_group_name=old_group_name
+            )
+            self.is_dirty = False
+
     def render_app_header(self) -> list[str]:
         """Return header lines with group status banner."""
         lines = tui.get_header_lines()
@@ -111,6 +122,7 @@ class EvenSplitApp:
                 try:
                     engine.add_member(self.members, p)
                     self.is_dirty = True
+                    self.auto_persist()
                 except ValueError as err:
                     print(f"  {tui.GREY}✖{tui.RESET}  {tui.WHITE}{err}{tui.RESET}")
                     tui.pause()
@@ -127,6 +139,7 @@ class EvenSplitApp:
                 return
             self.group_name = new_group
             self.is_dirty = True
+            self.auto_persist()
             self.live_add_members()
             return
 
@@ -149,8 +162,10 @@ class EvenSplitApp:
                     print(line)
                 new_name = tui.prompt_input("New group name", default=self.group_name)
                 if new_name and new_name != self.group_name:
+                    old_name = self.group_name
                     self.group_name = new_name
                     self.is_dirty = True
+                    self.auto_persist(old_group_name=old_name)
                     tui.success(f"Group renamed to '{self.group_name}'.")
                     tui.pause()
 
@@ -172,17 +187,16 @@ class EvenSplitApp:
 
         amount = None
         while amount is None:
-            raw_amt = tui.prompt_input(f"Total amount ({tui.CURRENCY})")
+            raw_amt = tui.prompt_input(f"Total amount ({tui.CURRENCY}) (e.g. 40 or 10 * 4)")
             if not raw_amt:
                 return
             try:
-                val = float(raw_amt)
-                if val <= 0:
-                    tui.error("Amount must be greater than zero.")
-                    continue
+                val = engine.parse_amount(raw_amt)
+                if any(op in raw_amt for op in ("+", "-", "*", "/")):
+                    print(f"  {tui.GREY}= {tui.CURRENCY} {val:,.2f}{tui.RESET}")
                 amount = val
-            except ValueError:
-                tui.error("Please enter a valid numeric amount.")
+            except ValueError as err:
+                tui.error(str(err))
 
         payer_idx = tui.select_one(
             self.members,
@@ -202,20 +216,21 @@ class EvenSplitApp:
             return
 
         share = round(amount / len(participants), 2)
-        tui.clear_screen()
-        for line in self.render_app_header():
-            print(line)
-        tui.render_expense_card(desc, amount, payer, len(participants), share)
+        card_lines = tui.get_expense_card_lines(desc, amount, payer, len(participants), share)
+
+        def confirm_header():
+            return self.render_app_header() + card_lines
 
         confirm = tui.select_one(
             ["Yes, record expense", "Cancel"],
             prompt="Confirm and save this expense:",
-            header_fn=self.render_app_header
+            header_fn=confirm_header
         )
         if confirm == 0:
             tui.spinner("Recording expense...", 0.6)
             engine.record_expense(self.expenses, self.members, desc, amount, payer, participants)
             self.is_dirty = True
+            self.auto_persist()
             tui.clear_screen()
             for line in self.render_app_header():
                 print(line)
@@ -296,8 +311,10 @@ class EvenSplitApp:
                     print(line)
                 new_name = tui.prompt_input("Enter new group name", default=self.group_name)
                 if new_name and new_name != self.group_name:
+                    old_name = self.group_name
                     self.group_name = new_name
                     self.is_dirty = True
+                    self.auto_persist(old_group_name=old_name)
                     tui.success(f"Group name updated to '{self.group_name}'.")
                 tui.pause()
 
@@ -335,6 +352,7 @@ class EvenSplitApp:
                         try:
                             engine.rename_member(self.members, self.expenses, old_m, new_m)
                             self.is_dirty = True
+                            self.auto_persist()
                             tui.success(f"Renamed '{old_m}' to '{new_m}'.")
                         except ValueError as err:
                             tui.error(str(err))
@@ -354,6 +372,7 @@ class EvenSplitApp:
                     try:
                         engine.delete_member(self.members, self.expenses, target)
                         self.is_dirty = True
+                        self.auto_persist()
                         tui.success(f"Removed member '{target}'.")
                     except ValueError as err:
                         tui.error(str(err))
@@ -400,25 +419,32 @@ class EvenSplitApp:
                 if new_desc:
                     engine.update_expense(self.expenses, self.members, target["id"], desc=new_desc)
                     self.is_dirty = True
+                    self.auto_persist()
                     tui.success("Description updated.")
                 tui.pause()
             elif action == 1:
                 tui.clear_screen()
                 for line in hdr():
                     print(line)
-                new_amt = tui.prompt_input(f"New amount in {tui.CURRENCY}", default=str(target["amount"]))
-                try:
-                    engine.update_expense(self.expenses, self.members, target["id"], amount=float(new_amt))
-                    self.is_dirty = True
-                    tui.success("Amount updated.")
-                except ValueError as err:
-                    tui.error(str(err))
+                new_amt = tui.prompt_input(f"New amount in {tui.CURRENCY} (or math expr)", default=str(target["amount"]))
+                if new_amt:
+                    try:
+                        val = engine.parse_amount(new_amt)
+                        if any(op in new_amt for op in ("+", "-", "*", "/")):
+                            print(f"  {tui.GREY}= {tui.CURRENCY} {val:,.2f}{tui.RESET}")
+                        engine.update_expense(self.expenses, self.members, target["id"], amount=val)
+                        self.is_dirty = True
+                        self.auto_persist()
+                        tui.success("Amount updated.")
+                    except ValueError as err:
+                        tui.error(str(err))
                 tui.pause()
             elif action == 2:
                 p_idx = tui.select_one(self.members, prompt="Select new payer:", header_fn=hdr)
                 if p_idx != -1:
                     engine.update_expense(self.expenses, self.members, target["id"], payer=self.members[p_idx])
                     self.is_dirty = True
+                    self.auto_persist()
                     tui.success("Payer updated.")
                 tui.pause()
             elif action == 3:
@@ -427,6 +453,7 @@ class EvenSplitApp:
                 if parts:
                     engine.update_expense(self.expenses, self.members, target["id"], participants=parts)
                     self.is_dirty = True
+                    self.auto_persist()
                     tui.success("Participants updated.")
                 tui.pause()
             elif action == 4:
@@ -434,6 +461,7 @@ class EvenSplitApp:
                 if confirm == 0:
                     engine.delete_expense(self.expenses, target["id"])
                     self.is_dirty = True
+                    self.auto_persist()
                     tui.success("Expense deleted.")
                 tui.pause()
 
@@ -619,9 +647,14 @@ def main():
                 print("  --help, -h   Show help message")
                 return
 
-        app = EvenSplitApp()
-        app.run()
+        tui.enter_alt_screen()
+        try:
+            app = EvenSplitApp()
+            app.run()
+        finally:
+            tui.exit_alt_screen()
     except (KeyboardInterrupt, EOFError):
+        tui.exit_alt_screen()
         print(f"\n  {tui.WHITE}EvenSplit closed.{tui.RESET}\n")
 
 
