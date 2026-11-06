@@ -1,98 +1,131 @@
 {
-    "group_name": "Kanak bday",
+    "group_name": "Outingggg",
     "members": [
-        "Kanak",
-        "Kowsalya",
-        "Anjlee",
-        "Fatima",
         "Archak",
         "Hashim",
         "Arsh",
-        "Debashish"
+        "Anjlee",
+        "Fatima",
+        "Kanak",
+        "Kowsalya",
+        "Vijaylakshmi"
     ],
     "expenses": [
         {
             "id": 1,
-            "description": "tea",
-            "amount": 80.0,
-            "payer": "Debashish",
-            "participants": [
-                "Kanak",
-                "Kowsalya",
-                "Anjlee",
-                "Fatima"
-            ],
-            "split_amount": 20.0
-        },
-        {
-            "id": 2,
-            "description": "coffee",
-            "amount": 45.0,
+            "description": "Tea",
+            "amount": 60.0,
             "payer": "Archak",
             "participants": [
                 "Archak",
+                "Arsh",
+                "Fatima",
+                "Kanak",
+                "Kowsalya"
+            ],
+            "split_amount": 12.0
+        },
+        {
+            "id": 2,
+            "description": "Coffee",
+            "amount": 45.0,
+            "payer": "Kowsalya",
+            "participants": [
                 "Hashim",
-                "Arsh"
+                "Anjlee",
+                "Kowsalya"
             ],
             "split_amount": 15.0
         },
         {
             "id": 3,
-            "description": "starters",
-            "amount": 320.0,
-            "payer": "Anjlee",
+            "description": "Panipuri",
+            "amount": 160.0,
+            "payer": "Kowsalya",
             "participants": [
-                "Kanak",
-                "Kowsalya",
-                "Anjlee",
-                "Fatima",
                 "Archak",
                 "Hashim",
                 "Arsh",
-                "Debashish"
+                "Anjlee",
+                "Fatima",
+                "Kanak",
+                "Kowsalya",
+                "Vijaylakshmi"
             ],
-            "split_amount": 40.0
+            "split_amount": 20.0
         },
         {
             "id": 4,
-            "description": "Main Courseee 🤤",
-            "amount": 800.0,
-            "payer": "Kanak",
+            "description": "Juice",
+            "amount": 140.0,
+            "payer": "Vijaylakshmi",
             "participants": [
+                "Fatima",
                 "Kanak",
                 "Kowsalya",
-                "Anjlee",
-                "Fatima",
-                "Archak",
-                "Hashim",
-                "Arsh",
-                "Debashish"
+                "Vijaylakshmi"
             ],
-            "split_amount": 100.0
+            "split_amount": 35.0
         },
         {
             "id": 5,
-            "description": "soda",
-            "amount": 360.0,
-            "payer": "Arsh",
+            "description": "Choclate milkshake",
+            "amount": 180.0,
+            "payer": "Archak",
             "participants": [
-                "Kanak",
-                "Kowsalya",
-                "Anjlee",
                 "Archak",
                 "Hashim",
-                "Arsh"
+                "Arsh",
+                "Anjlee"
             ],
-            "split_amount": 60.0
+            "split_amount": 45.0
         },
         {
             "id": 6,
-            "description": "ice-cream",
-            "amount": 100.0,
+            "description": "Masala Dosa",
+            "amount": 400.0,
             "payer": "Fatima",
             "participants": [
+                "Archak",
+                "Hashim",
+                "Arsh",
+                "Anjlee",
                 "Fatima",
-                "Debashish"
+                "Kanak",
+                "Kowsalya",
+                "Vijaylakshmi"
+            ],
+            "split_amount": 50.0
+        },
+        {
+            "id": 7,
+            "description": "2nd masala dosa",
+            "amount": 270.0,
+            "payer": "Fatima",
+            "participants": [
+                "Archak",
+                "Hashim",
+                "Arsh",
+                "Fatima",
+                "Kowsalya",
+                "Vijaylakshmi"
+            ],
+            "split_amount": 45.0
+        },
+        {
+            "id": 8,
+            "description": "ice-creammmmmmm",
+            "amount": 400.0,
+            "payer": "Hashim",
+            "participants": [
+                "Archak",
+                "Hashim",
+                "Arsh",
+                "Anjlee",
+                "Fatima",
+                "Kanak",
+                "Kowsalya",
+                "Vijaylakshmi"
             ],
             "split_amount": 50.0
         }

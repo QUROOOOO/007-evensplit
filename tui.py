@@ -182,16 +182,126 @@ def pause(message: str = "Press any key to continue..."):
     print()
 
 
+def format_prompt_label(label: str) -> str:
+    """Format prompt label so parenthetical hints like (e.g. ...) render in dim grey."""
+    return re.sub(r"(\(.*?\))", rf"{GREY}\1{WHITE}", label)
+
+
 def prompt_input(label: str, default: str = None) -> str:
-    """Prompt user for standard text input with visible cursor."""
+    """Prompt user for standard text input with dim grey hints and crisp white input."""
     show_cursor()
-    def_str = f" {GREY}(default: {default}){RESET}" if default else ""
+    def_str = f" {GREY}(default: {default}){WHITE}" if default else ""
+    fmt_label = format_prompt_label(label)
     try:
-        val = input(f"  {GREEN}❯{RESET} {WHITE}{label}{RESET}{def_str}: ").strip()
+        val = input(f"  {GREEN}❯{RESET} {WHITE}{fmt_label}{def_str}: {WHITE}").strip()
+        sys.stdout.write(RESET)
+        sys.stdout.flush()
         return default if not val and default is not None else val
     except (KeyboardInterrupt, EOFError):
+        sys.stdout.write(RESET)
+        sys.stdout.flush()
         print()
         return ""
+
+
+def prompt_description_with_stepper(label: str = "Expense description (e.g. Starters)") -> tuple[str, int]:
+    """Interactive text prompt with live quantity stepper via Left/Right arrow keys."""
+    if not sys.stdin.isatty():
+        raw = prompt_input(label)
+        return raw, 1
+
+    qty = 1
+    chars = []
+    fmt_label = format_prompt_label(label)
+    prefix = f"  {GREEN}❯{RESET} {WHITE}{fmt_label}{WHITE}: "
+
+    def _render():
+        text_str = "".join(chars)
+        stepper = f"  {GREY}[Qty: {BOLD_AMBER}◄ {qty} ►{GREY}]{RESET}"
+        full_line = f"\r{prefix}{WHITE}{text_str}{stepper}\033[K"
+        sys.stdout.write(full_line)
+        back_len = visible_len(f"  [Qty: ◄ {qty} ►]")
+        sys.stdout.write(f"\033[{back_len}D")
+        sys.stdout.flush()
+
+    show_cursor()
+    _render()
+
+    if os.name == "nt":
+        import msvcrt
+        while True:
+            ch = msvcrt.getwch()
+            if ch in ("\x00", "\xe0"):
+                code = msvcrt.getwch()
+                if code == "M":
+                    qty += 1
+                    _render()
+                elif code == "K":
+                    qty = max(1, qty - 1)
+                    _render()
+            elif ch in ("\r", "\n"):
+                break
+            elif ch == "\x08":
+                if chars:
+                    chars.pop()
+                    _render()
+            elif ch in ("\x1b", "\x03", "\x1a"):
+                sys.stdout.write(RESET + "\n")
+                sys.stdout.flush()
+                return "", 1
+            elif ord(ch) >= 32:
+                chars.append(ch)
+                _render()
+    else:
+        import tty
+        import termios
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            while True:
+                ch = sys.stdin.read(1)
+                if ch == "\x1b":
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == "[":
+                        ch3 = sys.stdin.read(1)
+                        if ch3 == "C":
+                            qty += 1
+                            _render()
+                        elif ch3 == "D":
+                            qty = max(1, qty - 1)
+                            _render()
+                    else:
+                        sys.stdout.write(RESET + "\n")
+                        return "", 1
+                elif ch in ("\r", "\n"):
+                    break
+                elif ch in ("\x7f", "\x08"):
+                    if chars:
+                        chars.pop()
+                        _render()
+                elif ch in ("\x03", "\x1a"):
+                    sys.stdout.write(RESET + "\n")
+                    return "", 1
+                elif ord(ch) >= 32:
+                    chars.append(ch)
+                    _render()
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+    sys.stdout.write(RESET + "\n")
+    sys.stdout.flush()
+
+    raw_text = "".join(chars).strip()
+    if not raw_text:
+        return "", 1
+
+    if qty > 1 and not re.search(r"\(x\d+\)$", raw_text, re.IGNORECASE):
+        final_desc = f"{raw_text} (x{qty})"
+    else:
+        final_desc = raw_text
+
+    return final_desc, qty
 
 
 def spinner(message: str = "Processing...", duration: float = 0.8):
@@ -368,10 +478,14 @@ def select_multi(items: list, checked: list = None, prompt: str = "Select partic
 # ---------------------------------------------------------------------------
 # Visual Card on Expense Confirmation
 # ---------------------------------------------------------------------------
-def get_expense_card_lines(desc: str, amount: float, payer: str, count: int, share: float) -> list[str]:
+def get_expense_card_lines(desc: str, amount: float, payer: str, count: int, share: float, quantity: int = 1) -> list[str]:
     """Return lines for the visual summary card for expense confirmation."""
     inner_w = 44
-    title_str = truncate_visible(desc, 24)
+    if quantity > 1 and not re.search(r"\(x\d+\)$", desc.strip(), re.IGNORECASE):
+        title_full = f"{desc.strip()} (x{quantity})"
+    else:
+        title_full = desc.strip()
+    title_str = truncate_visible(title_full, 24)
     amt_str = f"{CURRENCY} {amount:,.2f}"
     split_str = f"{count} members ({CURRENCY} {share:,.2f} each)"
 
@@ -395,9 +509,9 @@ def get_expense_card_lines(desc: str, amount: float, payer: str, count: int, sha
     return card
 
 
-def render_expense_card(desc: str, amount: float, payer: str, count: int, share: float):
+def render_expense_card(desc: str, amount: float, payer: str, count: int, share: float, quantity: int = 1):
     """Render a visual summary card for expense confirmation."""
-    for line in get_expense_card_lines(desc, amount, payer, count, share):
+    for line in get_expense_card_lines(desc, amount, payer, count, share, quantity):
         print(line)
 
 
@@ -508,7 +622,13 @@ def render_expense_history(expenses: list):
 
     for exp in expenses:
         exp_id = str(exp.get("id", "-"))
-        desc = truncate_visible(exp["description"], 15)
+        raw_desc = exp["description"]
+        qty = exp.get("quantity", 1)
+        if qty > 1 and not re.search(r"\(x\d+\)$", raw_desc.strip(), re.IGNORECASE):
+            full_desc = f"{raw_desc.strip()} (x{qty})"
+        else:
+            full_desc = raw_desc.strip()
+        desc = truncate_visible(full_desc, 15)
         payer = exp["payer"]
         amt = exp["amount"]
         parts = exp["participants"]

@@ -57,6 +57,22 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(exp["split_amount"], 30.0)
         self.assertEqual(len(self.expenses), 1)
 
+    def test_record_expense_with_quantity(self):
+        engine.add_member(self.members, "Alice")
+        engine.add_member(self.members, "Bob")
+        exp = engine.record_expense(
+            self.expenses,
+            self.members,
+            desc="Masala Dosa (x2)",
+            amount=80.0,
+            payer="Alice",
+            participants=["Alice", "Bob"],
+            quantity=2
+        )
+        self.assertEqual(exp["quantity"], 2)
+        self.assertEqual(exp["amount"], 80.0)
+        self.assertEqual(exp["split_amount"], 40.0)
+
     def test_record_expense_invalid_inputs(self):
         engine.add_member(self.members, "Alice")
         engine.add_member(self.members, "Bob")

@@ -110,7 +110,7 @@ def delete_member(members: list, expenses: list, member_name: str) -> bool:
     return True
 
 
-def record_expense(expenses: list, members: list, desc: str, amount, payer: str, participants: list) -> dict:
+def record_expense(expenses: list, members: list, desc: str, amount, payer: str, participants: list, quantity: int = 1) -> dict:
     """Validate and record a shared expense split equally among participants."""
     if not desc or not desc.strip():
         raise ValueError("Expense description cannot be empty.")
@@ -159,13 +159,14 @@ def record_expense(expenses: list, members: list, desc: str, amount, payer: str,
         "amount": val,
         "payer": canonical_payer,
         "participants": canonical_participants,
-        "split_amount": per_person_share
+        "split_amount": per_person_share,
+        "quantity": max(1, int(quantity)) if quantity else 1
     }
     expenses.append(expense)
     return expense
 
 
-def update_expense(expenses: list, members: list, expense_id: int, desc: str = None, amount=None, payer: str = None, participants: list = None) -> dict:
+def update_expense(expenses: list, members: list, expense_id: int, desc: str = None, amount=None, payer: str = None, participants: list = None, quantity: int = None) -> dict:
     """Update fields on an existing expense and recompute split amount."""
     target = None
     for exp in expenses:
@@ -199,6 +200,9 @@ def update_expense(expenses: list, members: list, expense_id: int, desc: str = N
         if not participants:
             raise ValueError("Participants list cannot be empty.")
         target["participants"] = list(participants)
+
+    if quantity is not None:
+        target["quantity"] = max(1, int(quantity))
 
     target["split_amount"] = round(target["amount"] / len(target["participants"]), 2)
     return target

@@ -181,20 +181,47 @@ class EvenSplitApp:
             tui.pause()
             return
 
-        desc = tui.prompt_input("Expense description (e.g. Starters, Villa Booking)")
+        desc, qty = tui.prompt_description_with_stepper("Expense description (e.g. Starters, Villa Booking)")
         if not desc:
             return
 
         amount = None
         while amount is None:
-            raw_amt = tui.prompt_input(f"Total amount ({tui.CURRENCY}) (e.g. 40 or 10 * 4)")
+            if qty > 1:
+                amt_label = f"Total amount ({tui.CURRENCY}) (Qty: {qty} | Enter total or unit price * {qty})"
+            else:
+                amt_label = f"Total amount ({tui.CURRENCY}) (e.g. 40 or 10 * 4)"
+
+            raw_amt = tui.prompt_input(amt_label)
             if not raw_amt:
                 return
+
             try:
                 val = engine.parse_amount(raw_amt)
-                if any(op in raw_amt for op in ("+", "-", "*", "/")):
-                    print(f"  {tui.GREY}= {tui.CURRENCY} {val:,.2f}{tui.RESET}")
-                amount = val
+                has_math_op = any(op in raw_amt for op in ("+", "-", "*", "/"))
+
+                if qty > 1 and not has_math_op:
+                    total_calc = round(val * qty, 2)
+                    calc_opt = tui.select_one(
+                        [
+                            f"Unit price: {tui.CURRENCY} {val:,.2f} x {qty} = {tui.CURRENCY} {total_calc:,.2f}",
+                            f"Total bill: {tui.CURRENCY} {val:,.2f} for all {qty}"
+                        ],
+                        prompt=f"Is {tui.CURRENCY} {val:,.2f} the unit price or total bill?",
+                        header_fn=self.render_app_header
+                    )
+                    if calc_opt == -1:
+                        continue
+                    if calc_opt == 0:
+                        amount = total_calc
+                        print(f"  {tui.GREY}= {tui.CURRENCY} {amount:,.2f} ({val:g} x {qty}){tui.RESET}")
+                    else:
+                        amount = val
+                else:
+                    if has_math_op:
+                        print(f"  {tui.GREY}= {tui.CURRENCY} {val:,.2f}{tui.RESET}")
+                    amount = val
+
             except ValueError as err:
                 tui.error(str(err))
 
@@ -216,7 +243,7 @@ class EvenSplitApp:
             return
 
         share = round(amount / len(participants), 2)
-        card_lines = tui.get_expense_card_lines(desc, amount, payer, len(participants), share)
+        card_lines = tui.get_expense_card_lines(desc, amount, payer, len(participants), share, quantity=qty)
 
         def confirm_header():
             return self.render_app_header() + card_lines
@@ -228,7 +255,7 @@ class EvenSplitApp:
         )
         if confirm == 0:
             tui.spinner("Recording expense...", 0.6)
-            engine.record_expense(self.expenses, self.members, desc, amount, payer, participants)
+            engine.record_expense(self.expenses, self.members, desc, amount, payer, participants, quantity=qty)
             self.is_dirty = True
             self.auto_persist()
             tui.clear_screen()
@@ -598,13 +625,13 @@ def run_demo():
 
     members = ["Alice", "Bob", "Charlie", "Diana"]
     expenses = [
-        {"id": 1, "description": "Airbnb Villa", "amount": 12000.0, "payer": "Alice", "participants": members, "split_amount": 3000.0},
-        {"id": 2, "description": "Starters & Grill 🍔", "amount": 4000.0, "payer": "Bob", "participants": ["Alice", "Bob", "Charlie"], "split_amount": 1333.33},
-        {"id": 3, "description": "Scooter Rentals", "amount": 1500.0, "payer": "Charlie", "participants": ["Bob", "Charlie", "Diana"], "split_amount": 500.0}
+        {"id": 1, "description": "Airbnb Villa", "amount": 12000.0, "payer": "Alice", "participants": members, "split_amount": 3000.0, "quantity": 1},
+        {"id": 2, "description": "Grill Burgers 🍔", "amount": 4000.0, "payer": "Bob", "participants": ["Alice", "Bob", "Charlie"], "split_amount": 1333.33, "quantity": 4},
+        {"id": 3, "description": "Scooter Rentals", "amount": 1500.0, "payer": "Charlie", "participants": ["Bob", "Charlie", "Diana"], "split_amount": 500.0, "quantity": 2}
     ]
 
-    tui.hint("1. Visual Expense Confirmation Card:")
-    tui.render_expense_card("Starters & Grill 🍔", 4000.0, "Bob", 3, 1333.33)
+    tui.hint("1. Visual Expense Confirmation Card (with Quantity):")
+    tui.render_expense_card("Grill Burgers 🍔", 4000.0, "Bob", 3, 1333.33, quantity=4)
 
     tui.hint("2. Expense History (Emoji & Width Aligned):")
     tui.render_expense_history(expenses)
