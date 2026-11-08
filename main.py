@@ -620,7 +620,7 @@ class EvenSplitApp:
 def run_demo():
     """Non-interactive showcase of EvenSplit with ASCII header and visual card."""
     tui.clear_screen()
-    tui.render_header()
+    tui.play_logo_sweep()
     print(f"  {tui.BOLD_AMBER}Kanak bday{tui.RESET}  {tui.GREY}•  4 members  •  {tui.BOLD_AMBER}₹ 17,500.00{tui.RESET}\n")
 
     members = ["Alice", "Bob", "Charlie", "Diana"]
@@ -676,6 +676,7 @@ def main():
 
         tui.enter_alt_screen()
         try:
+            tui.play_logo_sweep()
             app = EvenSplitApp()
             app.run()
         finally:
@@ -683,6 +684,9 @@ def main():
     except (KeyboardInterrupt, EOFError):
         tui.exit_alt_screen()
         print(f"\n  {tui.WHITE}EvenSplit closed.{tui.RESET}\n")
+    except Exception as exc:
+        tui.exit_alt_screen()
+        raise exc
 
 
 if __name__ == "__main__":

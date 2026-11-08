@@ -137,18 +137,53 @@ def read_key() -> str:
 # ---------------------------------------------------------------------------
 # Visual Elements & Headers
 # ---------------------------------------------------------------------------
+LOGO_LINES = [
+    "███████╗██╗   ██╗███████╗███╗   ██╗███████╗██████╗ ██╗     ██╗████████╗",
+    "██╔════╝██║   ██║██╔════╝████╗  ██║██╔════╝██╔══██╗██║     ██║╚══██╔══╝",
+    "█████╗  ██║   ██║█████╗  ██╔██╗ ██║███████╗██████╔╝██║     ██║   ██║   ",
+    "██╔══╝  ╚██╗ ██╔╝██╔══╝  ██║╚██╗██║╚════██║██╔═══╝ ██║     ██║   ██║   ",
+    "███████╗ ╚████╔╝ ███████╗██║ ╚████║███████║██║     ███████╗██║   ██║   ",
+    "╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═══╝╚══════╝╚═╝     ╚══════╝╚═╝   ╚═╝   ",
+]
+
+
+def play_logo_sweep():
+    """Sweep a beam of color across the ASCII logo on startup."""
+    max_width = max(len(line) for line in LOGO_LINES)
+    beam_width = 8
+
+    sys.stdout.write("\033[?25l\033[H")
+
+    for beam_col in range(0, max_width + beam_width + 4, 3):
+        buffer = ["\033[H\n"]
+        for line in LOGO_LINES:
+            line_chars = []
+            for x, char in enumerate(line):
+                if char == " ":
+                    line_chars.append(" ")
+                elif x > beam_col:
+                    line_chars.append(f"{GREY}·{RESET}")
+                elif beam_col - beam_width <= x <= beam_col:
+                    line_chars.append(f"{GREEN}{char}{RESET}")
+                else:
+                    line_chars.append(f"{AMBER}{char}{RESET}")
+            buffer.append("  " + "".join(line_chars) + "\n")
+
+        buffer.append(f"\n  {GREY}Group Expense Settlement Optimizer{RESET}\n")
+        sys.stdout.write("".join(buffer))
+        sys.stdout.flush()
+        time.sleep(0.025)
+
+    sys.stdout.write("\033[?25h")
+    sys.stdout.flush()
+
+
 def get_header_lines() -> list[str]:
     """Return lines for the bold ASCII art EvenSplit header."""
-    return [
-        f"{BOLD_AMBER}  ███████╗██╗   ██╗███████╗███╗   ██╗███████╗██████╗ ██╗     ██╗████████╗{RESET}",
-        f"{BOLD_AMBER}  ██╔════╝██║   ██║██╔════╝████╗  ██║██╔════╝██╔══██╗██║     ██║╚══██╔══╝{RESET}",
-        f"{BOLD_AMBER}  █████╗  ██║   ██║█████╗  ██╔██╗ ██║███████╗██████╔╝██║     ██║   ██║   {RESET}",
-        f"{BOLD_AMBER}  ██╔══╝  ╚██╗ ██╔╝██╔══╝  ██║╚██╗██║╚════██║██╔═══╝ ██║     ██║   ██║   {RESET}",
-        f"{BOLD_AMBER}  ███████╗ ╚████╔╝ ███████╗██║ ╚████║███████║██║     ███████╗██║   ██║   {RESET}",
-        f"{BOLD_AMBER}  ╚══════╝  ╚═══╝  ╚══════╝╚═╝  ╚═══╝╚══════╝╚═╝     ╚══════╝╚═╝   ╚═╝   {RESET}",
-        f"  {WHITE}Group Expense Settlement Optimizer{RESET}",
-        ""
-    ]
+    lines = [f"{BOLD_AMBER}  {line}{RESET}" for line in LOGO_LINES]
+    lines.append(f"  {WHITE}Group Expense Settlement Optimizer{RESET}")
+    lines.append("")
+    return lines
 
 
 def render_header():

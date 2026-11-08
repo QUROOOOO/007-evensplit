@@ -178,6 +178,21 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(expenses[0]["participants"], ["Alice", "Bob"])
         self.assertEqual(expenses[0]["split_amount"], 30.0)
 
+    def test_three_way_split_exact_zero_sum(self):
+        members = ["Alice", "Bob", "Charlie"]
+        expenses = [
+            {"id": 1, "description": "Dinner", "amount": 100.0, "payer": "Alice", "participants": members, "split_amount": 33.33}
+        ]
+        balances = engine.calculate_net_balances(members, expenses)
+        self.assertEqual(round(sum(balances.values()), 2), 0.0)
+        transfers = engine.compute_min_settlements(balances)
+        self.assertLessEqual(len(transfers), len(members) - 1)
+        for t in transfers:
+            balances[t["from"]] += t["amount"]
+            balances[t["to"]] -= t["amount"]
+        for bal in balances.values():
+            self.assertAlmostEqual(bal, 0.0, places=2)
+
     def test_parse_amount_valid_literals(self):
         self.assertEqual(engine.parse_amount("40"), 40.0)
         self.assertEqual(engine.parse_amount("150.50"), 150.50)
@@ -189,6 +204,7 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(engine.parse_amount("500 / 4"), 125.0)
         self.assertEqual(engine.parse_amount("100 - 25.50"), 74.50)
         self.assertEqual(engine.parse_amount("(10 + 5) * 2"), 30.0)
+        self.assertEqual(engine.parse_amount("((((10 + 20) * 2) / 4))"), 15.0)
 
     def test_parse_amount_invalid(self):
         with self.assertRaises(ValueError):

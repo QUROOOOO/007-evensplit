@@ -239,7 +239,15 @@ def calculate_net_balances(members: list, expenses: list) -> dict:
                 if p in balances:
                     balances[p] -= share
 
-    return {m: round(bal, 2) for m, bal in balances.items()}
+    rounded = {m: round(bal, 2) for m, bal in balances.items()}
+
+    # Eliminate tiny floating-point rounding remainder (e.g. 100 / 3)
+    diff = round(sum(rounded.values()), 2)
+    if diff != 0.0 and rounded:
+        target = max(rounded, key=lambda k: abs(rounded[k]))
+        rounded[target] = round(rounded[target] - diff, 2)
+
+    return rounded
 
 
 def get_member_breakdown(members: list, expenses: list) -> dict:
@@ -263,7 +271,11 @@ def get_member_breakdown(members: list, expenses: list) -> dict:
     for m, data in breakdown.items():
         data["paid"] = round(data["paid"], 2)
         data["consumed"] = round(data["consumed"], 2)
-        data["net"] = round(data["paid"] - data["consumed"], 2)
+
+    net_bals = calculate_net_balances(members, expenses)
+    for m in members:
+        if m in breakdown:
+            breakdown[m]["net"] = net_bals.get(m, 0.0)
 
     return breakdown
 
@@ -271,21 +283,21 @@ def get_member_breakdown(members: list, expenses: list) -> dict:
 def compute_min_settlements(net_balances: dict) -> list:
     """
     Greedy cash-flow debt minimization.
-    Matches largest debtor (bal < -0.01) with largest creditor (bal > 0.01).
+    Matches largest debtor with largest creditor until all are settled.
     """
     balances = {m: round(bal, 2) for m, bal in net_balances.items()}
     transfers = []
-    max_loops = len(balances) * 2
+    max_loops = max(10, len(balances) * 2)
 
     for _ in range(max_loops):
-        debtor = min(balances, key=balances.get)
-        creditor = max(balances, key=balances.get)
+        debtors = [(m, bal) for m, bal in balances.items() if bal < -0.01]
+        creditors = [(m, bal) for m, bal in balances.items() if bal > 0.01]
 
-        debtor_bal = balances[debtor]
-        creditor_bal = balances[creditor]
-
-        if debtor_bal >= -0.01 or creditor_bal <= 0.01:
+        if not debtors or not creditors:
             break
+
+        debtor, debtor_bal = min(debtors, key=lambda x: x[1])
+        creditor, creditor_bal = max(creditors, key=lambda x: x[1])
 
         settle_amt = round(min(abs(debtor_bal), creditor_bal), 2)
         if settle_amt <= 0:
